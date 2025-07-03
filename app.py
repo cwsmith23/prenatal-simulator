@@ -119,6 +119,9 @@ def run_simulation(params):
         net = rev_total - cac - total_cogs - inv_cost
         cash_balance += net
 
+        # Total Shipments
+        total_ship = ship_mon[1] + ship_mon[2] + ship_mon[3] + ship_pre[1] + ship_pre[2] + ship_pre[3]
+
         records.append({
             "Month": month,
             "New Monthly Subs": new_mon,
@@ -136,10 +139,11 @@ def run_simulation(params):
             "Prepaid Rev Recog": round(rev_pre, 2),
             "Total Revenue": round(rev_total, 2),
             "CAC": round(cac, 2),
-            "COGS Monthly Subs": round(cogs_mon, 2),
-            "COGS Prepaid Members": round(cogs_pre, 2),
+            "COGS Mon": round(cogs_mon, 2),
+            "COGS Pre": round(cogs_pre, 2),
             "Net Flow": round(net, 2),
-            "Cash Balance": round(cash_balance, 2)
+            "Cash Balance": round(cash_balance, 2),
+            "Total Shipments": total_ship
         })
 
     return pd.DataFrame(records)
@@ -204,4 +208,3 @@ params = {
 
 df = run_simulation(params).set_index("Month")
 st.dataframe(df)
-
