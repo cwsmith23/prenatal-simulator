@@ -14,9 +14,9 @@ def run_simulation(params):
     monthly_cohorts = []
     prepaid_cohorts = []
 
-    # Month 1 seeds
+    # Month 1 seeds: split into monthly vs prepaid
     init_pre = params["initial_prepaid"]
-    init_mon = params["initial_subscribers"]
+    init_mon = params["initial_subscribers"] - init_pre
     if init_mon > 0:
         monthly_cohorts.append({"start": 1, "count": init_mon, "stage": 1})
     if init_pre > 0:
@@ -29,25 +29,19 @@ def run_simulation(params):
 
     records = []
     for month in range(1, months + 1):
-        # Compute alive before churn and shipments
-        if month == 1:
-            alive_prior = init_mon + init_pre
-        else:
-            alive_prior = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
-
-        # Sign-ups & cash-flow
+        # Determine new subs and cash
         if month == 1:
             new_mon, new_pre = init_mon, init_pre
         else:
+            alive_prior = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
             new_tot = alive_prior * params["subscriber_growth_rate"]
             new_pre = int(round(new_tot * params["percent_prepaid"]))
             new_mon = int(round(new_tot - new_pre))
-            # add monthly cohorts
+            # add cohorts
             for st, pct in params["start_stage_dist"].items():
                 cnt = int(round(new_mon * pct))
                 if cnt > 0:
                     monthly_cohorts.append({"start": month, "count": cnt, "stage": st})
-            # add prepaid & collect cash up front
             if new_pre > 0:
                 cash_balance += new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])
                 prepaid_cohorts.append({
@@ -57,8 +51,10 @@ def run_simulation(params):
                     "deferred": new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])
                 })
 
-        # Total active subscribers at start of month after new additions
-        active_subs = alive_prior + new_mon + new_pre
+        # Active subscriber counts
+        total_active_monthly = sum(c["count"] for c in monthly_cohorts)
+        total_active_prepaid = sum(c["count"] for c in prepaid_cohorts)
+        total_active = total_active_monthly + total_active_prepaid
 
         # Inventory arrivals
         arrivals = [o for o in pending_orders if o[0] == month]
@@ -66,7 +62,7 @@ def run_simulation(params):
             inventory[s] += qty
         pending_orders = [o for o in pending_orders if o[0] > month]
 
-        # Shipments and churn
+        # Shipments
         ship_mon = {1: 0, 2: 0, 3: 0}
         ship_pre = {1: 0, 2: 0, 3: 0}
         for c in monthly_cohorts:
@@ -82,7 +78,7 @@ def run_simulation(params):
                 s = min(1 + (age - 1) // 3, 3)
                 ship_pre[s] += c["count"]
 
-        # Reorder logic
+        # Reorder
         expected = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
         inv_cost = 0
         reorder = []
@@ -94,7 +90,7 @@ def run_simulation(params):
                 inv_cost += params["reorder_cost"]
                 reorder.append(s)
 
-        # Recognize revenue & COGS (accrual)
+        # Revenue & COGS accrual
         rev_mon = sum(ship_mon.values()) * params["monthly_price"]
         rev_pre = 0
         cogs_pre = 0
@@ -109,7 +105,7 @@ def run_simulation(params):
         cogs_mon = sum(ship_mon.values()) * cost_per_pkg
         total_cogs = cogs_mon + cogs_pre
 
-        cac = new_mon * params["cac_new_monthly"] + new_pre * params["cac_new_prepaid"]
+        cac = sum([new_mon * params["cac_new_monthly"], new_pre * params["cac_new_prepaid"]])
         net = rev_total - cac - total_cogs - inv_cost
         cash_balance += net
 
@@ -120,7 +116,9 @@ def run_simulation(params):
             "Stage 1 To Ship": ship_mon[1] + ship_pre[1],
             "Stage 2 To Ship": ship_mon[2] + ship_pre[2],
             "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
-            "Total Active Subs": active_subs,
+            "Active Monthly Subs": total_active_monthly,
+            "Active Prepaid Subs": total_active_prepaid,
+            "Total Active Subs": total_active,
             "Monthly Revenue": round(rev_mon, 2),
             "Prepaid Rev Recog": round(rev_pre, 2),
             "Total Revenue": round(rev_total, 2),
@@ -196,5 +194,6 @@ params = {
 
 df = run_simulation(params).set_index("Month")
 st.dataframe(df)
+
 
 
