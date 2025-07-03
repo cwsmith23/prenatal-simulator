@@ -141,7 +141,7 @@ def slider_with_input(label, min_val, max_val, default, step, is_float=False, fm
 st.title("BareBump Cash‑Flow Simulator")
 st.sidebar.header("Parameters")
 
-monthly_price = slider_with_input("Price", 0, 500, 75, 1)
+monthly_price = slider_with_input("Sale Price", 0, 500, 75, 1)
 init_subs     = slider_with_input("Initial Subs", 0, 2000, 250, 10)
 init_pre      = slider_with_input("Initial Prepaid", 0, 1000, 20, 10)
 growth        = slider_with_input("Growth Rate", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
