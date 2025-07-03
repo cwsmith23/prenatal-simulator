@@ -39,6 +39,7 @@ def run_simulation(params):
             if new_pre > 0:
                 prepaid_cohorts.append({"start": month, "count": new_pre, "stage": 1})
 
+        # Prepaid revenue upfront
         prepaid_rev = new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])
 
         # arrivals
@@ -83,17 +84,22 @@ def run_simulation(params):
         net = total_rev - cac - cogs - inv_cost
         cash_balance += net
 
+        # calculate totals
         s1 = ship_mon[1] + ship_pre[1]
         s2 = ship_mon[2] + ship_pre[2]
         s3 = ship_mon[3] + ship_pre[3]
+        total_to_ship = s1 + s2 + s3
+        total_active = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
 
         records.append({
             "Month": month,
             "New Monthly Subs": new_mon,
             "New Prepaid Subs": new_pre,
-            "Stage 1 Subs": s1,
-            "Stage 2 Subs": s2,
-            "Stage 3 Subs": s3,
+            "Stage 1 To Ship": s1,
+            "Stage 2 To Ship": s2,
+            "Stage 3 To Ship": s3,
+            "Total To Ship": total_to_ship,
+            "Total Active Subs": total_active,
             "Monthly Revenue": round(rev_mon, 2),
             "Prepaid Revenue": round(prepaid_rev, 2),
             "Total Revenue": round(total_rev, 2),
@@ -102,7 +108,7 @@ def run_simulation(params):
             "Inv S1": inventory[1],
             "Inv S2": inventory[2],
             "Inv S3": inventory[3],
-            "Reorder": reorder,
+            "Reorder Stages": reorder,
             "Net Cash Flow": round(net, 2),
             "Cash Balance": round(cash_balance, 2)
         })
@@ -113,7 +119,7 @@ def run_simulation(params):
 # ─── Helper: Slider + Number Input w/ Unique Keys ────────────────────────────────
 def slider_with_input(label, min_val, max_val, default, step, is_float=False, fmt="%d"):
     col1, col2 = st.sidebar.columns([3, 1])
-    key_base = label.replace(" ", "_").replace(" ", "_")
+    key_base = label.replace(" ", "_")
     if is_float:
         val = col1.slider(
             label, float(min_val), float(max_val), float(default), float(step),
@@ -148,7 +154,7 @@ growth        = slider_with_input("Growth Rate", 0.0, 1.0, 0.10, 0.01, True, "%.
 pct_pre       = slider_with_input("% Prepaid", 0.0, 1.0, 0.20, 0.01, True, "%.2f")
 disc_pre      = slider_with_input("Prepaid Disc", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
 churn         = slider_with_input("Churn Rate", 0.0, 1.0, 0.05, 0.01, True, "%.2f")
-lead_time     = slider_with_input("Lead Time (# Months) ", 0, 6, 1, 1)
+lead_time     = slider_with_input("Lead Time (# Months)", 0, 6, 1, 1)
 safety        = slider_with_input("Inv Safety Threshold ×", 1.0, 3.0, 1.2, 0.05, True, "%.2f")
 rqty          = slider_with_input("Reorder Qty", 0, 5000, 1330, 10)
 rcost         = slider_with_input("Reorder Cost", 0, 100000, 25000, 1000)
@@ -181,5 +187,8 @@ params = {
     "simulation_months":       months
 }
 
+# Run and display
+
 df = run_simulation(params).set_index("Month")
 st.dataframe(df)
+
