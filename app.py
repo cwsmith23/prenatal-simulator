@@ -34,7 +34,6 @@ def run_simulation(params):
         if month == 1:
             new_mon, new_pre = init_mon, init_pre
         else:
-            # only cohorts still delivering
             alive_prior = sum(
                 c["count"] for c in monthly_cohorts + prepaid_cohorts
                 if 1 <= (month - c["start"] + 1) <= ((4 - c.get("stage",1)) * 3)
@@ -42,7 +41,6 @@ def run_simulation(params):
             new_tot = alive_prior * params["subscriber_growth_rate"]
             new_pre = int(round(new_tot * params["percent_prepaid"]))
             new_mon = int(round(new_tot - new_pre))
-            # add cohorts
             for st, pct in params["start_stage_dist"].items():
                 cnt = int(round(new_mon * pct))
                 if cnt > 0:
@@ -56,7 +54,7 @@ def run_simulation(params):
                     "deferred": new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])
                 })
 
-        # Active subscriber counts per GAAP delivery period
+        # Active subscriber counts per delivery period
         active_monthly = sum(
             c["count"] for c in monthly_cohorts
             if 1 <= (month - c["start"] + 1) <= ((4 - c["stage"]) * 3)
@@ -121,7 +119,6 @@ def run_simulation(params):
         net = rev_total - cac - total_cogs - inv_cost
         cash_balance += net
 
-        # Record
         records.append({
             "Month": month,
             "New Monthly Subs": new_mon,
@@ -147,6 +144,7 @@ def run_simulation(params):
 
     return pd.DataFrame(records)
 
+
 # ─── Helper: Slider + Input w/ Unique Keys ─────────────────────────────────────
 def slider_with_input(label, min_val, max_val, default, step, is_float=False, fmt="%d"):
     col1, col2 = st.sidebar.columns([3, 1])
@@ -158,6 +156,7 @@ def slider_with_input(label, min_val, max_val, default, step, is_float=False, fm
         val = col1.slider(label, int(min_val), int(max_val), int(default), int(step), key=key+"_s")
         num = col2.number_input("", int(min_val), int(max_val), value=val, step=int(step), format=fmt, key=key+"_n")
     return num
+
 
 # ─── App Layout ─────────────────────────────────────────────────────────────
 st.title("BareBump Cash‑Flow Simulator")
@@ -173,7 +172,8 @@ churn = slider_with_input("Churn Rate", 0.0, 1.0, 0.05, 0.01, True, "%0.2f")
 lead_time = slider_with_input("Lead Time (# Months)", 0, 6, 1, 1)
 safety = slider_with_input("Inv Safety Threshold ×", 1.0, 3.0, 1.2, 0.05, True, "%0.2f")
 rqty = slider_with_input("Reorder Qty", 0, 5000, 1330, 10)
-rcost = slider_with_input("Reorder Cost", 0, 100000, 25000, 1000)\ninv1 = slider_with_input("Inv Stage 1", 0, 5000, 1330, 10)
+rcost = slider_with_input("Reorder Cost", 0, 100000, 25000, 1000)
+inv1 = slider_with_input("Inv Stage 1", 0, 5000, 1330, 10)
 inv2 = slider_with_input("Inv Stage 2", 0, 5000, 1330, 10)
 inv3 = slider_with_input("Inv Stage 3", 0, 5000, 1330, 10)
 inv_cost = slider_with_input("Inv Cost", 0, 200000, 75000, 1000)
