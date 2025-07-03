@@ -181,5 +181,5 @@ params = {
     "simulation_months":       months
 }
 
-df = run_simulation(params)
+df = run_simulation(params).set_index("Month")
 st.dataframe(df)
