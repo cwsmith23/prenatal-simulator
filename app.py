@@ -136,8 +136,8 @@ def run_simulation(params):
             "Prepaid Rev Recog": round(rev_pre, 2),
             "Total Revenue": round(rev_total, 2),
             "CAC": round(cac, 2),
-            "COGS Mon": round(cogs_mon, 2),
-            "COGS Pre": round(cogs_pre, 2),
+            "COGS Monthly Subs": round(cogs_mon, 2),
+            "COGS Prepaid Members": round(cogs_pre, 2),
             "Net Flow": round(net, 2),
             "Cash Balance": round(cash_balance, 2)
         })
