@@ -54,7 +54,6 @@ def run_simulation(params):
         # Active subscriber counts
         total_active_monthly = sum(c["count"] for c in monthly_cohorts)
         total_active_prepaid = sum(c["count"] for c in prepaid_cohorts)
-        total_active = total_active_monthly + total_active_prepaid
 
         # Inventory arrivals
         arrivals = [o for o in pending_orders if o[0] == month]
@@ -71,7 +70,7 @@ def run_simulation(params):
             if 1 <= age <= max_age:
                 s = min(c["stage"] + (age - 1) // 3, 3)
                 ship_mon[s] += c["count"]
-                c["count"] = int(round(c["count"] * (1 - params["churn_rate"])) )
+                c["count"] = int(round(c["count"] * (1 - params["churn_rate"])))
         for c in prepaid_cohorts:
             age = month - c["start"] + 1
             if 1 <= age <= 9:
@@ -118,14 +117,12 @@ def run_simulation(params):
             "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
             "Active Monthly Subs": total_active_monthly,
             "Active Prepaid Subs": total_active_prepaid,
-            "Total Active Subs": total_active,
             "Monthly Revenue": round(rev_mon, 2),
             "Prepaid Rev Recog": round(rev_pre, 2),
             "Total Revenue": round(rev_total, 2),
             "CAC": round(cac, 2),
             "COGS Mon": round(cogs_mon, 2),
             "COGS Pre": round(cogs_pre, 2),
-            "Total COGS": round(total_cogs, 2),
             "Inv S1": inventory[1],
             "Inv S2": inventory[2],
             "Inv S3": inventory[3],
@@ -155,21 +152,21 @@ st.sidebar.header("Parameters")
 monthly_price = slider_with_input("Sale Price", 0, 500, 75, 1)
 init_subs = slider_with_input("Initial Subs", 0, 2000, 250, 10)
 init_pre = slider_with_input("Initial Prepaid", 0, 1000, 20, 10)
-growth = slider_with_input("Growth Rate", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
-pct_pre = slider_with_input("% Prepaid", 0.0, 1.0, 0.20, 0.01, True, "%.2f")
-disc_pre = slider_with_input("Prepaid Disc", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
-churn = slider_with_input("Churn Rate", 0.0, 1.0, 0.05, 0.01, True, "%.2f")
+growth = slider_with_input("Growth Rate", 0.0, 1.0, 0.10, 0.01, True, "%0.2f")
+pct_pre = slider_with_input("% Prepaid", 0.0, 1.0, 0.20, 0.01, True, "%0.2f")
+disc_pre = slider_with_input("Prepaid Disc", 0.0, 1.0, 0.10, 0.01, True, "%0.2f")
+churn = slider_with_input("Churn Rate", 0.0, 1.0, 0.05, 0.01, True, "%0.2f")
 lead_time = slider_with_input("Lead Time (# Months)", 0, 6, 1, 1)
-safety = slider_with_input("Inv Safety Threshold ×", 1.0, 3.0, 1.2, 0.05, True, "%.2f")
+safety = slider_with_input("Inv Safety Threshold ×", 1.0, 3.0, 1.2, 0.05, True, "%0.2f")
 rqty = slider_with_input("Reorder Qty", 0, 5000, 1330, 10)
 rcost = slider_with_input("Reorder Cost", 0, 100000, 25000, 1000)
 inv1 = slider_with_input("Inv Stage 1", 0, 5000, 1330, 10)
 inv2 = slider_with_input("Inv Stage 2", 0, 5000, 1330, 10)
 inv3 = slider_with_input("Inv Stage 3", 0, 5000, 1330, 10)
 inv_cost = slider_with_input("Inv Cost", 0, 200000, 75000, 1000)
-st1 = slider_with_input("Start S1", 0.0, 1.0, 0.60, 0.01, True, "%.2f")
-st2 = slider_with_input("Start S2", 0.0, 1.0, 0.30, 0.01, True, "%.2f")
-st3 = slider_with_input("Start S3", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
+st1 = slider_with_input("Start S1", 0.0, 1.0, 0.60, 0.01, True, "%0.2f")
+st2 = slider_with_input("Start S2", 0.0, 1.0, 0.30, 0.01, True, "%0.2f")
+st3 = slider_with_input("Start S3", 0.0, 1.0, 0.10, 0.01, True, "%0.2f")
 months = slider_with_input("Months", 1, 36, 12, 1)
 
 params = {
@@ -194,6 +191,5 @@ params = {
 
 df = run_simulation(params).set_index("Month")
 st.dataframe(df)
-
 
 
