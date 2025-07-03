@@ -107,7 +107,7 @@ def run_simulation(params):
 
     return pd.DataFrame(records)
 
-st.title("💰 Cash‑Flow Simulation")
+st.title(" BareBump Cash‑Flow Simulation 💰 ")
 
 # Sidebar inputs
 st.sidebar.header("Parameters")
