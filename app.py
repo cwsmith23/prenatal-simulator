@@ -24,16 +24,21 @@ def run_simulation(params):
             "start": 1,
             "count": init_pre,
             "stage": 1,
+            # deferred revenue to amortize
             "deferred": init_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])
         })
 
     records = []
     for month in range(1, months + 1):
-        # Determine new subs and cash
+        # Determine new subs and collect prepaid cash up front
         if month == 1:
             new_mon, new_pre = init_mon, init_pre
         else:
-            alive_prior = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
+            # only cohorts still delivering
+            alive_prior = sum(
+                c["count"] for c in monthly_cohorts + prepaid_cohorts
+                if 1 <= (month - c["start"] + 1) <= ((4 - c.get("stage",1)) * 3)
+            )
             new_tot = alive_prior * params["subscriber_growth_rate"]
             new_pre = int(round(new_tot * params["percent_prepaid"]))
             new_mon = int(round(new_tot - new_pre))
@@ -51,9 +56,15 @@ def run_simulation(params):
                     "deferred": new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])
                 })
 
-        # Active subscriber counts
-        total_active_monthly = sum(c["count"] for c in monthly_cohorts)
-        total_active_prepaid = sum(c["count"] for c in prepaid_cohorts)
+        # Active subscriber counts per GAAP delivery period
+        active_monthly = sum(
+            c["count"] for c in monthly_cohorts
+            if 1 <= (month - c["start"] + 1) <= ((4 - c["stage"]) * 3)
+        )
+        active_prepaid = sum(
+            c["count"] for c in prepaid_cohorts
+            if 1 <= (month - c["start"] + 1) <= ((4 - c["stage"]) * 3)
+        )
 
         # Inventory arrivals
         arrivals = [o for o in pending_orders if o[0] == month]
@@ -70,14 +81,15 @@ def run_simulation(params):
             if 1 <= age <= max_age:
                 s = min(c["stage"] + (age - 1) // 3, 3)
                 ship_mon[s] += c["count"]
-                c["count"] = int(round(c["count"] * (1 - params["churn_rate"])))
+                c["count"] = int(round(c["count"] * (1 - params["churn_rate"])) )
         for c in prepaid_cohorts:
             age = month - c["start"] + 1
-            if 1 <= age <= 9:
-                s = min(1 + (age - 1) // 3, 3)
+            max_age = (4 - c["stage"]) * 3
+            if 1 <= age <= max_age:
+                s = min(c["stage"] + (age - 1) // 3, 3)
                 ship_pre[s] += c["count"]
 
-        # Reorder
+        # Reorder logic
         expected = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
         inv_cost = 0
         reorder = []
@@ -95,8 +107,9 @@ def run_simulation(params):
         cogs_pre = 0
         for c in prepaid_cohorts:
             age = month - c["start"] + 1
-            if 1 <= age <= 9:
-                slice_rev = c["deferred"] / (10 - age)
+            max_age = (4 - c["stage"]) * 3
+            if 1 <= age <= max_age:
+                slice_rev = c["deferred"] / (max_age - age + 1)
                 rev_pre += slice_rev
                 c["deferred"] -= slice_rev
                 cogs_pre += sum(ship_pre.values()) * cost_per_pkg
@@ -108,6 +121,7 @@ def run_simulation(params):
         net = rev_total - cac - total_cogs - inv_cost
         cash_balance += net
 
+        # Record
         records.append({
             "Month": month,
             "New Monthly Subs": new_mon,
@@ -115,8 +129,8 @@ def run_simulation(params):
             "Stage 1 To Ship": ship_mon[1] + ship_pre[1],
             "Stage 2 To Ship": ship_mon[2] + ship_pre[2],
             "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
-            "Active Monthly Subs": total_active_monthly,
-            "Active Prepaid Subs": total_active_prepaid,
+            "Active Monthly Subs": active_monthly,
+            "Active Prepaid Subs": active_prepaid,
             "Monthly Revenue": round(rev_mon, 2),
             "Prepaid Rev Recog": round(rev_pre, 2),
             "Total Revenue": round(rev_total, 2),
@@ -159,8 +173,7 @@ churn = slider_with_input("Churn Rate", 0.0, 1.0, 0.05, 0.01, True, "%0.2f")
 lead_time = slider_with_input("Lead Time (# Months)", 0, 6, 1, 1)
 safety = slider_with_input("Inv Safety Threshold ×", 1.0, 3.0, 1.2, 0.05, True, "%0.2f")
 rqty = slider_with_input("Reorder Qty", 0, 5000, 1330, 10)
-rcost = slider_with_input("Reorder Cost", 0, 100000, 25000, 1000)
-inv1 = slider_with_input("Inv Stage 1", 0, 5000, 1330, 10)
+rcost = slider_with_input("Reorder Cost", 0, 100000, 25000, 1000)\ninv1 = slider_with_input("Inv Stage 1", 0, 5000, 1330, 10)
 inv2 = slider_with_input("Inv Stage 2", 0, 5000, 1330, 10)
 inv3 = slider_with_input("Inv Stage 3", 0, 5000, 1330, 10)
 inv_cost = slider_with_input("Inv Cost", 0, 200000, 75000, 1000)
@@ -191,5 +204,4 @@ params = {
 
 df = run_simulation(params).set_index("Month")
 st.dataframe(df)
-
 
