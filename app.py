@@ -145,81 +145,67 @@ def run_simulation(params):
 
 # ─── Calculation of Financial Statements ─────────────────────────────────────────
 def build_financials(df, params):
-    # Income Statement & Cash Flow
+    # Income Statement
     df['Gross Profit'] = df['Total Rev'] - (df['COGS Mon'] + df['COGS Pre'])
-    df['Operating Income'] = df['Gross Profit'] - df['CAC']  # EBIT
+    df['Operating Income'] = df['Gross Profit'] - df['CAC']
 
-    # Balance Sheet snapshots\    
+    # Balance Sheet
+    # Current Assets
+    cash = df['Cash Balance']
+    inventory_val = df[['Inv S1','Inv S2','Inv S3']].sum(axis=1) * (params['initial_inventory_cost']/sum(params['initial_inventory'].values()))
+    ar = 0  # placeholder for accounts receivable
+    short_term_inv = 0  # placeholder
+    current_assets = cash + inventory_val + ar + short_term_inv
+    # Fixed Assets & Intangibles (placeholders)
+    pp_e = 0
+    long_term_inv = 0
+    intangibles = 0
+
+    # Liabilities
+    accounts_payable = df['Cost of Reorder']
+    salaries_payable = 0
+    loans_short = 0
+    current_liabilities = accounts_payable + salaries_payable + loans_short
+    long_term_loans = 0
+    bonds_payable = 0
+
+    # Equity
+    common_stock = params['initial_inventory_cost']
+    retained_earnings = df['Operating Income'].cumsum()
+    equity = common_stock + retained_earnings
+
     bs = pd.DataFrame({
-        'Cash': df['Cash Balance'],
-        'Inventory': df[['Inv S1','Inv S2','Inv S3']].sum(axis=1)*params['initial_inventory_cost']/sum(params['initial_inventory'].values()),
-        'Deferred Liabilities': df['Deferred Liabilities'],
-        'Paid-in Capital': params['initial_inventory_cost']  # equity infusion for initial inventory purchase
+        'Current Assets': current_assets,
+        'Fixed Assets': pp_e + long_term_inv,
+        'Intangible Assets': intangibles,
+        'Total Assets': current_assets + pp_e + long_term_inv + intangibles,
+        'Current Liabilities': current_liabilities,
+        'Long-term Liabilities': long_term_loans + bonds_payable,
+        'Total Liabilities': current_liabilities + long_term_loans + bonds_payable,
+        'Common Stock': common_stock,
+        'Retained Earnings': retained_earnings,
+        'Total Equity': equity,
+        'Liabilities + Equity': current_liabilities + long_term_loans + bonds_payable + equity
     })
 
+    # Cash Flow (reuse cf_df)
     cf = pd.DataFrame({
         'Operating Cash Flow': df['Operating Income'],
         'Net Cash Flow': df['Net Flow']
     })
 
-    return df, bs, cf
+    # Income Statement / P&L
+    is_df = pd.DataFrame({
+        'Revenue': df['Total Rev'],
+        'COGS': df['COGS Mon'] + df['COGS Pre'],
+        'Operating Expenses': df['CAC'],
+        'Other Expenses': 0,  # placeholder
+        'Gains': 0,           # placeholder
+        'Losses': 0,          # placeholder
+        'Net Income': df['Operating Income']
+    })
 
-# ─── Helper: Slider + Input w/Unique Keys ─────────────────────────────────────────
-def slider_with_input(label, min_val, max_val, default, step, is_float=False, fmt="%d"):
-    col1, col2 = st.sidebar.columns([3, 1])
-    key = label.replace(" ", "_")
-    if is_float:
-        val = col1.slider(label, float(min_val), float(max_val), float(default), float(step), key=key+"_s")
-        num = col2.number_input("", float(min_val), float(max_val), value=val, step=float(step), format=fmt, key=key+"_n")
-    else:
-        val = col1.slider(label, int(min_val), int(max_val), int(default), int(step), key=key+"_s")
-        num = col2.number_input("", int(min_val), int(max_val), value=val, step=int(step), format=fmt, key=key+"_n")
-    return num
-
-# ─── App Layout ────────────────────────────────────────────────────────────────
-st.title("BareBump Cash‑Flow Simulator")
-st.sidebar.header("Parameters")
-
-monthly_price = slider_with_input("Sale Price", 0, 500, 75, 1)
-init_subs     = slider_with_input("Initial Subs", 0, 2000, 250, 10)
-init_pre      = slider_with_input("Initial Prepaid", 0, 1000, 20, 10)
-growth        = slider_with_input("Growth Rate", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
-pct_pre       = slider_with_input("% Prepaid", 0.0, 1.0, 0.20, 0.01, True, "%.2f")
-disc_pre      = slider_with_input("Prepaid Disc", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
-churn         = slider_with_input("Churn Rate", 0.0, 1.0, 0.05, 0.01, True, "%.2f")
-lead_time     = slider_with_input("Lead Time (# Months)", 0, 6, 1, 1)
-safety        = slider_with_input("Inv Safety Threshold ×", 1.0, 3.0, 1.2, 0.05, True, "%.2f")
-rqty          = slider_with_input("Reorder Qty", 0, 5000, 1330, 10)
-rcost         = slider_with_input("Reorder Cost", 0, 100000, 25000, 1000)
-
-inv1          = slider_with_input("Inv Stage 1", 0, 5000, 1330, 10)
-inv2          = slider_with_input("Inv Stage 2", 0, 5000, 1330, 10)
-inv3          = slider_with_input("Inv Stage 3", 0, 5000, 1330, 10)
-inv_cost      = slider_with_input("Inv Cost", 0, 200000, 75000, 1000)
-st1           = slider_with_input("Start S1", 0.0, 1.0, 0.60, 0.01, True, "%.2f")
-st2           = slider_with_input("Start S2", 0.0, 1.0, 0.30, 0.01, True, "%.2f")
-st3           = slider_with_input("Start S3", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
-months        = slider_with_input("Months", 1, 36, 12, 1)
-
-params = {
-    "monthly_price":           monthly_price,
-    "initial_subscribers":     init_subs,
-    "initial_prepaid":         init_pre,
-    "subscriber_growth_rate":  growth,
-    "percent_prepaid":         pct_pre,
-    "prepaid_discount_rate":   disc_pre,
-    "cac_new_monthly":         20,
-    "cac_new_prepaid":         20,
-    "initial_inventory":       {1: inv1, 2: inv2, 3: inv3},
-    "initial_inventory_cost":  inv_cost,
-    "reorder_qty":             rqty,
-    "reorder_cost":            rcost,
-    "churn_rate":              churn,
-    "lead_time":               lead_time,
-    "reorder_safety":          safety,
-    "start_stage_dist":        {1: st1, 2: st2, 3: st3},
-    "simulation_months":       months
-}
+    return df, bs, is_df, cf
 
 # Run simulation and display
 sim_df = run_simulation(params)
@@ -243,5 +229,4 @@ if bs_df is not None:
 if cf_df is not None:
     st.subheader("Income Statement & Cash Flow")
     st.dataframe(cf_df)
-
 
