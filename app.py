@@ -131,12 +131,13 @@ def run_simulation(params):
                 max_age = (4 - c["stage"]) * 3
             if 1 <= age <= max_age:
                 s = min(c["stage"] + (age - 1)//3, 3)
+                # enforce s1 limit
                 if s == 1 and c.get("s1_shipped", 0) >= c.get("s1_limit", 3):
                     continue
                 ship_mon[s] += c["count"]
                 if s == 1:
                     c["s1_shipped"] += 1
-                c["count"] = int(round(c["count"] * (1 - params["churn_rate"]))
+                c["count"] = int(round(c["count"] * (1 - params["churn_rate"])))
         for c in prepaid_cohorts:
             age = month - c["start"] + 1
             if 1 <= age <= 9:
@@ -149,7 +150,7 @@ def run_simulation(params):
         reorder = []
         for s in (1, 2, 3):
             inventory[s] -= exp[s]
-            future_need = sum(exp.values()) * params["lead_time"]
+            future_need = exp[s] * params["lead_time"]
             threshold = math.ceil((exp[s] + future_need) * params["reorder_safety"])
             if inventory[s] <= threshold:
                 reorder.append(f"S{s}")
@@ -177,8 +178,8 @@ def run_simulation(params):
 
         # Financial metrics
         gross = total_rev - total_cogs
-        op_inc = gross - cac - ship_cost
-        net = op_inc - inv_cost
+        op_inc = gross - cac
+        net = op_inc - inv_cost - ship_cost
         cash_balance += net
 
         # Active subscriber counts
@@ -271,25 +272,17 @@ sim_df = run_simulation(data)
 bs_df, is_df, cf_df = build_financials(sim_df, data)
 
 st.subheader("Monthly Simulation")
-# Format simulation table
+# Format numbers with commas and two decimals
 sim_disp = sim_df.style.format("{:,}", subset=[col for col in sim_df.columns if sim_df[col].dtype == 'int64'])
 sim_disp = sim_disp.format("{:,.2f}", subset=[col for col in sim_df.columns if sim_df[col].dtype == 'float64'])
 st.dataframe(sim_disp)
 
 st.subheader("Balance Sheet")
-# Format balance sheet
-bs_disp = bs_df.style.format("{:,}", subset=[col for col in bs_df.columns if bs_df[col].dtype == 'int64'])
-bs_disp = bs_disp.format("{:,.2f}", subset=[col for col in bs_df.columns if bs_df[col].dtype == 'float64'])
-st.dataframe(bs_disp)
+st.dataframe(bs_df)
 
 st.subheader("Income Statement / P&L")
-# Format income statement
-is_disp = is_df.style.format("{:,}", subset=[col for col in is_df.columns if is_df[col].dtype == 'int64'])
-is_disp = is_disp.format("{:,.2f}", subset=[col for col in is_df.columns if is_df[col].dtype == 'float64'])
-st.dataframe(is_disp)
+st.dataframe(is_df)
 
 st.subheader("Cash Flow Statement")
-# Format cash flow statement
-cf_disp = cf_df.style.format("{:,}", subset=[col for col in cf_df.columns if cf_df[col].dtype == 'int64'])
-cf_disp = cf_disp.format("{:,.2f}", subset=[col for col in cf_df.columns if cf_df[col].dtype == 'float64'])
-st.dataframe(cf_disp)
+st.dataframe(cf_df)
+
