@@ -260,9 +260,10 @@ def build_financials(df, params):
     bs = pd.concat([assets, liabilities, equity], axis=1)
 
     # Income Statement / Cash Flow
+        # Income Statement / P&L
     is_df = pd.DataFrame({
         'Revenue': df['Total Revenue'],
-        'COGS': df['COGS Mon'] + df['COGS Pre'],
+        'COGS': df['Total Revenue'] - df['Gross Profit'],
         'Operating Expenses': df['CAC'],
         'Shipping Expenses': df['Shipping Expense'],
         'Other Gains': 0,
