@@ -136,7 +136,7 @@ def run_simulation(params):
                 ship_mon[s] += c["count"]
                 if s == 1:
                     c["s1_shipped"] += 1
-                c["count"] = int(round(c["count"] * (1 - params["churn_rate"]))
+                c["count"] = int(round(c["count"] * (1 - params["churn_rate"])))
         for c in prepaid_cohorts:
             age = month - c["start"] + 1
             if 1 <= age <= 9:
