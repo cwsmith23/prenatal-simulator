@@ -51,7 +51,7 @@ data = {
     "churn_rate": churn,
     "lead_time": lead_time,
     "reorder_safety": safety,
-    "start_stage_dist": {1: st1, 2: st2, 3: st3},
+    "start_stage_dist": {1: s1, 2: s2, 3: s3},
     "ship1_dist": {1: ship1_1, 2: ship1_2, 3: ship1_3},
     "simulation_months": months
 }
@@ -62,7 +62,6 @@ def run_simulation(params):
     total_pkgs = sum(params["initial_inventory"].values())
     cost_per_pkg = params["initial_inventory_cost"] / total_pkgs
 
-    # initialize
     inventory = {s: int(q) for s, q in params["initial_inventory"].items()}
     cash_balance = 0
     pending_orders = []
@@ -98,7 +97,6 @@ def run_simulation(params):
             tot = alive * params["subscriber_growth_rate"]
             new_pre = int(round(tot * params["percent_prepaid"]))
             new_mon = int(round(tot - new_pre))
-            # apply stage start distribution and ship1 distribution
             for st, spct in params["start_stage_dist"].items():
                 for limit, pct in params["ship1_dist"].items():
                     cnt = int(round(new_mon * spct * pct))
@@ -210,116 +208,5 @@ def run_simulation(params):
             "Prepaid Revenue Recog": round(rev_pre, 2),
             "Total Revenue": round(total_rev, 2),
             "Gross Profit": round(gross, 2),
-            "Operating Income": round(op_inc, 2),
-            "COGS Mon": round(cogs_mon, 2),
-            "COGS Pre": round(cogs_pre, 2),
-            "Total COGS": round(total_cogs, 2),
-            "CAC": round(cac, 2),
-            "Shipping Exp": round(ship_cost, 2),
-            "Reorder Cost": round(inv_cost, 2),
-            "Net Cash Flow": round(net, 2),
-            "Cash Balance": round(cash_balance, 2)
-        })
+            "Operating Income": round(op
 
-    return pd.DataFrame(records).set_index("Month")
-
-# ─── Build Financial Statements ─────────────────────────────────────────────────
-def build_financials(df, params):
-    # Balance Sheet
-    bs = pd.DataFrame({
-        "Cash": df["Cash Balance"],
-        "Inventory": df[["Inv S1","Inv S2","Inv S3"]].sum(axis=1) * params["initial_inventory_cost"]/sum(params["initial_inventory"].values()),
-        "Accounts Recievable": 0,
-        "Total Current Assets": lambda x: x["Cash"] + x["Inventory"],
-        "PP&E": 0,
-        "Goodwill": 0,
-        "Total Assets": lambda x: x["Total Current Assets"] + x["PP&E"] + x["Goodwill"],
-        "Accounts Payable": 0,
-        "Deferred Rev": (df["Prepaid Revenue Recog"].shift(1).fillna(0).cumsum()),
-        "Total Current Liabilities": lambda x: x["Accounts Payable"] + x["Deferred Rev"],
-        "Long Term Debt": 0,
-        "Total Liabilities": lambda x: x["Total Current Liabilities"] + x["Long Term Debt"],
-        "Paid-in Capital": params["initial_inventory_cost"],
-        "Retained Earnings": df["Operating Income"].cumsum(),
-        "Total Equity": lambda x: x["Paid-in Capital"] + x["Retained Earnings"],
-        "Total Liab & Equity": lambda x: x["Total Liabilities"] + x["Total Equity"]
-    })
-
-    # Income Statement / P&L
-    is_df = pd.DataFrame({
-        "Revenue": df["Total Revenue"],
-        "COGS": df["Total COGS"],
-        "Gross Profit": df["Gross Profit"],
-        "Operating Expenses": df["CAC"] + df["Shipping Exp"],
-        "Operating Income": df["Operating Income"],
-        "Other Expenses": 0,
-        "Gains": 0,
-        "Losses": 0,
-        "Net Income": df["Operating Income"]
-    })
-
-    # Cash Flow Statement
-    cf = pd.DataFrame({
-        "Operating Cash Flow": df["Net Cash Flow"],
-        "Financing Cash Flow": [params["initial_inventory_cost"]] + [0]*(len(df)-1)
-    })
-
-    return bs, is_df, cf
-
-# ─── Run and Display ─────────────────────────────────────────────────────────────
-def build_financials(df, params):
-    # Cash
-    cash = df['Cash Balance']
-
-    # Accounts Receivable = Revenue recognized – cash collected
-    ar = df['Total Revenue'].cumsum() - df['Cash Balance']
-
-    # Inventory (already done)
-    inv = df[['Inv S1','Inv S2','Inv S3']].sum(axis=1) * params['initial_inventory_cost'] / sum(params['initial_inventory'].values())
-
-    # Total Current Assets
-    current_assets = cash + ar + inv
-
-    # PP&E, Goodwill (zeros or your values)
-    ppe = pd.Series(0, index=df.index)
-    gw  = pd.Series(0, index=df.index)
-
-    assets = pd.DataFrame({
-       'Cash': cash,
-       'Accounts Receivable': ar,
-       'Inventory': inv,
-       'Total Current Assets': current_assets,
-       'PP&E': ppe,
-       'Goodwill': gw,
-       'Total Assets': current_assets + ppe + gw
-    })
-
-    # Liabilities
-    # Accounts Payable: assume you pay inventory in same month (zero), or build from reorder costs
-    ap = pd.Series(0, index=df.index)
-    deferred = (df['Prepaid Revenue Recog'].shift(1).fillna(0).cumsum())
-    current_liab = ap + deferred
-    ltd = pd.Series(0, index=df.index)  # long‑term debt if any
-
-    liabilities = pd.DataFrame({
-       'Accounts Payable': ap,
-       'Deferred Rev': deferred,
-       'Total Current Liabilities': current_liab,
-       'Long Term Debt': ltd,
-       'Total Liabilities': current_liab + ltd
-    })
-
-    # Equity
-    pic = pd.Series(params['initial_inventory_cost'], index=df.index)  # constant
-    re  = df['Net Income'].cumsum()
-    total_eq = pic + re
-
-    equity = pd.DataFrame({
-       'Paid-in Capital': pic,
-       'Retained Earnings': re,
-       'Total Equity': total_eq
-    })
-
-    # Combine into one sheet
-    bs = pd.concat([assets, liabilities, equity], axis=1)
-    return bs
