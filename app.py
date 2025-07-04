@@ -163,17 +163,14 @@ def run_simulation(p):
         total_rev  = rev_mon + rev_pre
         total_cogs = cogs_mon + cogs_pre
         cac        = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
-        gross      = total_rev - total_cogs
+                gross      = total_rev - total_cogs
         op_inc     = gross - cac
-        net_income = op_inc - ship_cost
-        cash += net_income
+        # Net cash after shipping and reorder cost
+        net = op_inc - ship_cost - inv_cost
+        cash += net
 
         # Active & Deferred balances
-        act_mon       = sum(c["count"] for c in monthly_cohorts if 1 <= (m - c["start"] + 1) <= ((4 - c["stage"]) * 3))
-        act_pre       = sum(c["count"] for c in prepaid_cohorts if 1 <= (m - c["start"] + 1) <= 9)
-        deferred_bal  = sum(c["deferred"] for c in prepaid_cohorts)
-
-        records.append({
+({
             "Month": m,
             "New Monthly Subs": new_mon,
             "New Prepaid Members": new_pre,
