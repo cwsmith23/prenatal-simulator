@@ -164,7 +164,9 @@ def run_simulation(p):
         cogs_pre = sum(ship_pre.values()) * cost_per_pkg
         total_rev = rev_mon + rev_pre; total_cogs = cogs_mon + cogs_pre
         cac = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
-        gross = total_rev - total_cogs; op_inc = gross - cac; net = op_inc - inv_cost - ship_cost
+        gross = total_rev - total_cogs
+        op_inc = gross - cac
+        net_income = op_inc - ship_cost
         cash += net
 
         # Active counts
@@ -184,12 +186,12 @@ def run_simulation(p):
             "Monthly Revenue": round(rev_mon,2), "Prepaid Revenue Recog": round(rev_pre,2),
             "Total Revenue": round(total_rev,2), "Gross Profit": round(gross,2),
             "Operating Income": round(op_inc,2),
+            "Net Income": round(net_income,2),
             "COGS Mon": round(cogs_mon,2), "COGS Pre": round(cogs_pre,2),
             "Total COGS": round(total_cogs,2),
             "CAC": round(cac,2), "Shipping Exp": round(ship_cost,2),
             "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2),
-            "Deferred Rev Bal": round(deferred_bal,2),
-            "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2)
+            Deferred Rev Bal": round(deferred_bal,2)
         })
 
     return pd.DataFrame(records).set_index("Month")
@@ -203,7 +205,7 @@ def build_financials(df, p):
     bs["Total Curr Assets"] = bs["Cash"] + bs["Inventory"]
     bs["Total Liabilities"] = bs["Deferred Rev"]
     bs["Paid-in Capital"] = p["initial_inventory_cost"]
-    bs["Retained Earnings"] = df["Operating Income"].cumsum()
+    bs["Retained Earnings"] = df["Net Income"].cumsum()
     bs["Total Equity"] = bs["Paid-in Capital"] + bs["Retained Earnings"]
     bs["Total L+E"] = bs["Total Liabilities"] + bs["Total Equity"]
 
@@ -212,8 +214,8 @@ def build_financials(df, p):
         "COGS": df["Total COGS"],
         "Gross Profit": df["Gross Profit"],
         "Op Expenses": df["CAC"] + df["Shipping Exp"],
-        "Op Income": df["Operating Income"],
-        "Net Income": df["Operating Income"]
+        "Op Income": df["Operating Income"] - df["Shipping Exp"],
+        "Net Income": df["Net Income"]
     })
 
     cf = pd.DataFrame({
