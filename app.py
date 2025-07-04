@@ -65,32 +65,29 @@ def run_simulation(params):
             if 1 <= age <= max_age:
                 s = min(c["stage"] + (age - 1)//3, 3)
                 ship_mon[s] += c["count"]
-                c["count"] = int(round(c["count"] * (1 - params["churn_rate"])))
+                c["count"] = int(round(c["count"] * (1 - params["churn_rate"])) )
         for c in prepaid_cohorts:
             age = month - c["start"] + 1
             if 1 <= age <= 9:
                 s = min(1 + (age - 1)//3, 3)
                 ship_pre[s] += c["count"]
 
-        # 4) Reorder logic: place order when inventory <= future_need * safety
+        # 4) Reorder logic: record stage when order needed
         expected_now = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
         inv_cost = 0
-        reorder_months = []
+        reorder_stages = []
         for s in (1, 2, 3):
-            # reduce inventory by this month's demand
             inventory[s] -= expected_now[s]
-            # compute future need over lead_time months (assuming constant rate)
             future_need = expected_now[s] * params["lead_time"]
             threshold = math.ceil((expected_now[s] + future_need) * params["reorder_safety"])
             if inventory[s] <= threshold:
-                # place order this month
-                reorder_months.append(month)
+                # record stage that needs reorder this month
+                reorder_stages.append(f"S{s}")
                 pending_orders.append((month + params["lead_time"], s, params["reorder_qty"]))
                 inv_cost += params["reorder_cost"]
-        
+
         # 5) Revenue & COGS accrual
         rev_mon = sum(ship_mon.values()) * params["monthly_price"]
-        # prepaid recognition
         rev_pre = 0
         cogs_pre = 0
         for c in prepaid_cohorts:
@@ -107,7 +104,7 @@ def run_simulation(params):
         net = rev_total - cac - total_cogs - inv_cost
         cash_balance += net
 
-        # 6) Track active subs
+        # 6) Active subscriber counts
         active_mon = sum(c["count"] for c in monthly_cohorts if month - c["start"] + 1 <= (4 - c["stage"]) * 3)
         active_pre = sum(c["count"] for c in prepaid_cohorts if month - c["start"] + 1 <= 9)
 
@@ -122,7 +119,7 @@ def run_simulation(params):
             "Inv S1": inventory[1],
             "Inv S2": inventory[2],
             "Inv S3": inventory[3],
-            "Reorder Month": reorder_months,
+            "Reorder": reorder_stages,
             "Active Mon Subs": active_mon,
             "Active Pre Subs": active_pre,
             "Subscription Rev": round(rev_mon, 2),
@@ -132,7 +129,7 @@ def run_simulation(params):
             "COGS Mon": round(cogs_mon, 2),
             "COGS Pre": round(cogs_pre, 2),
             "Net Flow": round(net, 2),
-            "Cash Balance": round(cash_balance, 2)
+            "Cash Balance": round(cash_balance, 2)
         })
 
     return pd.DataFrame(records).set_index("Month")
