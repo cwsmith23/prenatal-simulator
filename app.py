@@ -67,7 +67,7 @@ def run_simulation(p):
     monthly_cohorts = []
     prepaid_cohorts = []
 
-    # Month 1 seeds & deferred cash
+    # Month 1 seeds & deferred cash
     init_pre = p["initial_prepaid"]
     init_mon = p["initial_subscribers"]
     if init_pre > 0:
@@ -87,7 +87,7 @@ def run_simulation(p):
 
     records = []
     for m in range(1, months + 1):
-        # New subscriptions
+        # New subs
         if m == 1:
             new_mon = sum(c["count"] for c in monthly_cohorts)
             new_pre = init_pre
@@ -101,10 +101,16 @@ def run_simulation(p):
                 for lim, pct in p["ship1_dist"].items():
                     cnt = int(round(new_mon * spct * pct))
                     if cnt > 0:
-                        monthly_cohorts.append({"start": m, "count": cnt, "stage": stg, "s1_limit": lim, "s1_shipped": 0})
+                        monthly_cohorts.append({
+                            "start": m, "count": cnt, "stage": stg,
+                            "s1_limit": lim, "s1_shipped": 0
+                        })
             if new_pre > 0:
                 cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
-                prepaid_cohorts.append({"start": m, "count": new_pre, "stage": 1, "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])})
+                prepaid_cohorts.append({
+                    "start": m, "count": new_pre, "stage": 1,
+                    "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+                })
 
         # Inventory arrivals
         for arr in [o for o in pending if o[0] == m]:
@@ -112,14 +118,15 @@ def run_simulation(p):
             inventory[s] += qty
         pending = [o for o in pending if o[0] > m]
 
-        # Shipments (custom S1 limits)
+        # Shipments
         ship_mon = {1: 0, 2: 0, 3: 0}
         ship_pre = {1: 0, 2: 0, 3: 0}
         for c in monthly_cohorts:
             age = m - c["start"] + 1
             lim = c["s1_limit"]
             if age <= lim:
-                s = 1; c["s1_shipped"] += 1
+                s = 1
+                c["s1_shipped"] += 1
             elif age <= lim + 3:
                 s = 2
             elif age <= lim + 6:
@@ -136,7 +143,8 @@ def run_simulation(p):
 
         # Reorder logic
         exp = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
-        inv_cost = 0; reorder = []
+        inv_cost = 0
+        reorder = []
         for s in (1, 2, 3):
             inventory[s] -= exp[s]
             fut = exp[s] * p["lead_time"]
@@ -160,17 +168,28 @@ def run_simulation(p):
                 c["deferred"] -= slice_rev
         cogs_mon = sum(ship_mon.values()) * cost_per_pkg
         cogs_pre = sum(ship_pre.values()) * cost_per_pkg
-        total_rev  = rev_mon + rev_pre
+        total_rev = rev_mon + rev_pre
         total_cogs = cogs_mon + cogs_pre
-        cac        = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
-                gross      = total_rev - total_cogs
-        op_inc     = gross - cac
+        cac = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
+
+        gross = total_rev - total_cogs
+        op_inc = gross - cac
         # Net cash after shipping and reorder cost
         net = op_inc - ship_cost - inv_cost
         cash += net
 
         # Active & Deferred balances
-({
+        act_mon = sum(
+            c["count"] for c in monthly_cohorts
+            if 1 <= (m - c["start"] + 1) <= ((4 - c["stage"]) * 3)
+        )
+        act_pre = sum(
+            c["count"] for c in prepaid_cohorts
+            if 1 <= (m - c["start"] + 1) <= 9
+        )
+        deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
+
+        records.append({
             "Month": m,
             "New Monthly Subs": new_mon,
             "New Prepaid Members": new_pre,
@@ -179,16 +198,15 @@ def run_simulation(p):
             "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
             "Inv S1": inventory[1], "Inv S2": inventory[2], "Inv S3": inventory[3],
             "Reorder": ",".join(reorder),
+            "Reorder Cost": round(inv_cost,2),
             "Active Monthly Subs": act_mon, "Active Prepaid Members": act_pre,
             "Monthly Revenue": round(rev_mon,2), "Prepaid Revenue Recog": round(rev_pre,2),
             "Total Revenue": round(total_rev,2), "Gross Profit": round(gross,2),
             "Operating Income": round(op_inc,2),
-            "Net Income": round(net_income,2),
+            "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2),
             "COGS Mon": round(cogs_mon,2), "COGS Pre": round(cogs_pre,2),
             "Total COGS": round(total_cogs,2),
             "CAC": round(cac,2), "Shipping Exp": round(ship_cost,2),
-            "Reorder Cost": round(inv_cost,2),
-            "Net Cash Flow": round(net_income,2), "Cash Balance": round(cash,2),
             "Deferred Rev Bal": round(deferred_bal,2)
         })
 
