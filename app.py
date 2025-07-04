@@ -188,7 +188,7 @@ def run_simulation(p):
             "Total COGS": round(total_cogs,2),
             "CAC": round(cac,2), "Shipping Exp": round(ship_cost,2),
             "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2),
-            "Deferred Rev Bal": round(deferred_bal,2)
+            "Deferred Rev Bal": round(deferred_bal,2),
             "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2)
         })
 
