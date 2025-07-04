@@ -211,7 +211,7 @@ def build_financials(df, params):
     cf = pd.DataFrame({
         "Operating Cash Flow": df['Op Income'],
         "Investing Cash Flow": -df['Reorder Cost'],
-        "Financing Cash Flow": df['Paid-in Capital'],
+        "Financing Cash Flow": pd.Series([params['initial_inventory_cost']] + [0]*(len(df)-1), index=df.index),
         "Net Cash Flow": df['Net Flow']
     })
     return df, bs, is_df.join(cf)
