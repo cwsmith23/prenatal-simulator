@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import math
 
-# ─── Sidebar Inputs ────────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 st.title("BareBump Cash‑Flow Simulator & Financials")
 st.sidebar.header("Parameters")
 
@@ -110,7 +110,11 @@ def run_simulation(p):
                 prepaid_cohorts.append({"start": m, "count": new_pre, "stage":1, "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])})
 
         # Inventory arrivals
-        for arr in [o for o in pending if o[0] == m]: _, s, qty = arr; inventory[s] += qty
+        inv_cost = 0
+        for arr in [o for o in pending if o[0] == m]:
+            _, s, qty, cost = arr
+            inventory[s] += qty
+            inv_cost += cost
         pending = [o for o in pending if o[0] > m]
 
         # Shipments (custom S1 limits)
@@ -137,15 +141,16 @@ def run_simulation(p):
 
         # Reorder logic
         exp = {s: ship_mon[s] + ship_pre[s] for s in (1,2,3)}
-        inv_cost = 0; reorder=[]
+        reorder = []
+        reorder_cost = 0
         for s in (1,2,3):
             inventory[s] -= exp[s]
             fut = exp[s] * p["lead_time"]
             thr = math.ceil((exp[s] + fut) * p["reorder_safety"] )
             if inventory[s] <= thr:
                 reorder.append(f"S{s}")
-                pending.append((m + p["lead_time"], s, p["reorder_qty"]))
-                inv_cost += p["reorder_cost"]
+                pending.append((m + p["lead_time"], s, p["reorder_qty"], p["reorder_cost"]))
+                reorder_cost += p["reorder_cost"]
 
         # Shipping cost
         ship_cost = sum(exp.values()) * p["shipping_cost_pkg"]
@@ -161,7 +166,8 @@ def run_simulation(p):
                 c["deferred"] -= slice_rev
         cogs_mon = sum(ship_mon.values()) * cost_per_pkg
         cogs_pre = sum(ship_pre.values()) * cost_per_pkg
-        total_rev = rev_mon + rev_pre; total_cogs = cogs_mon + cogs_pre
+        total_rev = rev_mon + rev_pre
+        total_cogs = cogs_mon + cogs_pre
         cac = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
         gross = total_rev - total_cogs
         op_inc = gross - cac
@@ -182,6 +188,7 @@ def run_simulation(p):
             "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
             "Inv S1": inventory[1], "Inv S2": inventory[2], "Inv S3": inventory[3],
             "Reorder": ",".join(reorder),
+            "Reorder Cost": reorder_cost,
             "Active Monthly Subs": act_mon, "Active Prepaid Members": act_pre,
             "Monthly Revenue": round(rev_mon,2), "Prepaid Revenue Recog": round(rev_pre,2),
             "Total Revenue": round(total_rev,2), "Gross Profit": round(gross,2),
@@ -196,7 +203,7 @@ def run_simulation(p):
 
     return pd.DataFrame(records).set_index("Month")
 
-# ─── Financial Statements ───────────────────────────────────────────────────────
+# ─── Financial Statements ─────────────────────────────────────────────────────
 def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
     bs = pd.DataFrame({"Cash": df["Cash Balance"]})
@@ -225,7 +232,7 @@ def build_financials(df, p):
 
     return bs, is_df, cf
 
-# ─── Run & Display ──────────────────────────────────────────────────────────────
+# ─── Run & Display ─────────────────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, is_df, cf_df = build_financials(sim_df, params)
 
