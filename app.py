@@ -9,7 +9,7 @@ def run_simulation(params):
     cost_per_pkg = params["initial_inventory_cost"] / total_pkgs
 
     inventory = {s: int(q) for s, q in params["initial_inventory"].items()}
-    cash_balance = -int(params["initial_inventory_cost"])
+    cash_balance = 0  # start cash excluding initial inventory cost (treated as paid-in capital)
     pending_orders = []
     monthly_cohorts = []
     prepaid_cohorts = []
@@ -153,7 +153,8 @@ def build_financials(df, params):
     bs = pd.DataFrame({
         'Cash': df['Cash Balance'],
         'Inventory': df[['Inv S1','Inv S2','Inv S3']].sum(axis=1)*params['initial_inventory_cost']/sum(params['initial_inventory'].values()),
-        'Deferred Liabilities': df['Deferred Liabilities']
+        'Deferred Liabilities': df['Deferred Liabilities'],
+        'Paid-in Capital': params['initial_inventory_cost']  # equity infusion for initial inventory purchase
     })
 
     cf = pd.DataFrame({
@@ -222,6 +223,25 @@ params = {
 
 # Run simulation and display
 sim_df = run_simulation(params)
+# Build and display financial statements
+bs_df, is_cf_df = None, None
+try:
+    _, bs_df, cf_df = build_financials(sim_df, params)
+except Exception:
+    bs_df, cf_df = None, None
+
+# Main simulation table
+st.subheader("Monthly Simulation")
 st.dataframe(sim_df)
+
+# Balance Sheet
+if bs_df is not None:
+    st.subheader("Balance Sheet")
+    st.dataframe(bs_df)
+
+# Income Statement & Cash Flow
+if cf_df is not None:
+    st.subheader("Income Statement & Cash Flow")
+    st.dataframe(cf_df)
 
 
