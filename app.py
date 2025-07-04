@@ -102,7 +102,7 @@ def run_simulation(params):
             if new_pre > 0:
                 cash_balance += new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])
                 prepaid_cohorts.append({"start": month, "count": new_pre, "stage": 1,
-                                         "deferred": new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])})
+                                          "deferred": new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])})
 
         # Inventory arrivals
         arrivals = [o for o in pending_orders if o[0] == month]
@@ -170,74 +170,5 @@ def run_simulation(params):
         op_inc = gross - cac
         net = op_inc - inv_cost - ship_cost
         cash_balance += net
-        active_mon = sum(c["count"] for c in monthly_cohorts if (month - c["start"] + 1) <= ((4-c["stage"]) * 3))
-        active_pre = sum(c["count"] for c in prepaid_cohorts if (month - c["start"] + 1) <= 9)
-        deferred = sum(c["deferred"] for c in prepaid_cohorts)
-
-        records.append({
-            "Month": month,
-            "New Mon": new_mon,
-            "New Pre": new_pre,
-            "S1 Ship": ship_mon[1] + ship_pre[1],
-            "S2 Ship": ship_mon[2] + ship_pre[2],
-            "S3 Ship": ship_mon[3] + ship_pre[3],
-            "Inv S1": inventory[1],
-            "Inv S2": inventory[2],
-            "Inv S3": inventory[3],
-            "Reorder": reorder,
-            "Active Mon": active_mon,
-            "Active Pre": active_pre,
-            "Rev Mon": round(rev_mon, 2),
-            "Rev Pre": round(rev_pre, 2),
-            "Total Rev": round(total_rev, 2),
-            "CAC": round(cac, 2),
-            "Ship Cost": round(ship_cost, 2),
-            "COGS Mon": round(cogs_mon, 2),
-            "COGS Pre": round(cogs_pre, 2),
-            "Gross Profit": round(gross, 2),
-            "Op Income": round(op_inc, 2),
-            "Reorder Cost": round(inv_cost, 2),
-            "Net Flow": round(net, 2),
-            "Cash Bal": round(cash_balance, 2),
-            "Deferred": round(deferred, 2)
-        })
-
-    return pd.DataFrame(records).set_index("Month")
-
-# ─── Financial Statement Builder ───────────────────────────────────────────────
-def build_financials(df, params):
-    bs = pd.DataFrame({
-        "Cash": df['Cash Bal'],
-        "Inventory": df[['Inv S1', 'Inv S2', 'Inv S3']].sum(axis=1) * (params['initial_inventory_cost'] / sum(params['initial_inventory'].values())),
-        "Deferred Rev": df['Deferred'],
-        "Paid-in Capital": params['initial_inventory_cost']
-    })
-    is_df = pd.DataFrame({
-        "Revenue": df['Total Rev'],
-        "COGS": df['COGS Mon'] + df['COGS Pre'],
-        "Operating Expenses": df['CAC'],
-        "Shipping Expenses": df['Ship Cost'],
-        "Other Expenses": 0,
-        "Gains": 0,
-        "Losses": 0,
-        "Gross Profit": df['Gross Profit'],
-        "Operating Income": df['Op Income'],
-        "Net Income": df['Op Income']
-    })
-    cf = pd.DataFrame({
-        "Operating Cash Flow": df['Op Income'],
-        "Investing Cash Flow": -df['Reorder Cost'],
-        "Financing Cash Flow": pd.Series([params['initial_inventory_cost']] + [0] * (len(df)-1), index=df.index),
-        "Net Cash Flow": df['Net Flow']
-    })
-    return df, bs, pd.concat([is_df, cf], axis=1)
-
-# ─── Run & Display ─────────────────────────────────────────────────────────────
-sim_df, bs_df, is_cf_df = build_financials(run_simulation(data), data)
-st.subheader("Monthly Simulation")
-st.dataframe(sim_df)
-st.subheader("Balance Sheet")
-st.dataframe(bs_df)
-st.subheader("Income Statement & Cash Flow")
-st.dataframe(is_cf_df)
+        active_mon = sum(c["count"] for c in monthly_cohorts if (month - c["start"] + 1) <= ((4-c[...]
 
