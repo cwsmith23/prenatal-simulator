@@ -151,17 +151,26 @@ def run_simulation(p):
         # shipping cost
         ship_cost=sum(exp.values())*p['shipping_cost_pkg']
 
-        # revenue & cogs
-        rev_mon=sum(ship_mon.values())*p['monthly_price']; rev_pre=0; cogs_pre=0
+                # revenue & cogs
+        rev_mon = sum(ship_mon.values()) * p['monthly_price']
+        rev_pre = 0
+        # recognize deferred revenue for prepaids
         for c in prepaid_cohorts:
-            age=m-c['start']+1
-            if 1<=age<=9:
-                slice_rev=c['deferred']/(10-age)
-                rev_pre+=slice_rev; c['deferred']-=slice_rev
-                cogs_pre+=ship_pre[s]*cost_per_pkg
-        total_rev=rev_mon+rev_pre; cogs_mon=sum(ship_mon.values())*cost_per_pkg
-        total_cogs=cogs_mon+cogs_pre; cac=new_mon*p['cac_new_monthly']+new_pre*p['cac_new_prepaid']
-        gross=total_rev-total_cogs; op_inc=gross-cac; net=op_inc-inv_cost-ship_cost; cash+=net
+            age = m - c['start'] + 1
+            if 1 <= age <= 9:
+                slice_rev = c['deferred'] / (10 - age)
+                rev_pre += slice_rev
+                c['deferred'] -= slice_rev
+        # COGS: monthly + prepaid shipments
+        cogs_mon = sum(ship_mon.values()) * cost_per_pkg
+        cogs_pre = sum(ship_pre.values()) * cost_per_pkg
+        total_rev  = rev_mon + rev_pre
+        total_cogs = cogs_mon + cogs_pre
+        cac = new_mon * p['cac_new_monthly'] + new_pre * p['cac_new_prepaid']
+        gross  = total_rev - total_cogs
+        op_inc = gross - cac
+        net    = op_inc - inv_cost - ship_cost
+        cash  += net
 
         # actives
         act_mon=sum(c['count'] for c in monthly_cohorts if 1<=(m-c['start']+1)<=((4-c['stage'])*3))
