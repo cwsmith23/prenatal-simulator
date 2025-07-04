@@ -188,7 +188,6 @@ def run_simulation(p):
             "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
             "Inv S1": inventory[1], "Inv S2": inventory[2], "Inv S3": inventory[3],
             "Reorder": ",".join(reorder),
-            "Reorder Cost": reorder_cost,
             "Active Monthly Subs": act_mon, "Active Prepaid Members": act_pre,
             "Monthly Revenue": round(rev_mon,2), "Prepaid Revenue Recog": round(rev_pre,2),
             "Total Revenue": round(total_rev,2), "Gross Profit": round(gross,2),
@@ -197,6 +196,7 @@ def run_simulation(p):
             "COGS Mon": round(cogs_mon,2), "COGS Pre": round(cogs_pre,2),
             "Total COGS": round(total_cogs,2),
             "CAC": round(cac,2), "Shipping Exp": round(ship_cost,2),
+            "Reorder Cost": reorder_cost,
             "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2),
             "Deferred Rev Bal": round(deferred_bal,2)
         })
