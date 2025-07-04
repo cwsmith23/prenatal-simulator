@@ -170,6 +170,7 @@ def run_simulation(p):
         # Active counts
         act_mon = sum(c["count"] for c in monthly_cohorts if 1 <= (m - c["start"] + 1) <= ((4 - c["stage"]) * 3))
         act_pre = sum(c["count"] for c in prepaid_cohorts if 1 <= (m - c["start"] + 1) <= 9)
+        deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
 
         records.append({
             "Month": m, "New Monthly Subs": new_mon,
@@ -186,7 +187,8 @@ def run_simulation(p):
             "COGS Mon": round(cogs_mon,2), "COGS Pre": round(cogs_pre,2),
             "Total COGS": round(total_cogs,2),
             "CAC": round(cac,2), "Shipping Exp": round(ship_cost,2),
-            "Reorder Cost": round(inv_cost,2),
+            "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2),
+            "Deferred Rev Bal": round(deferred_bal,2)
             "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2)
         })
 
@@ -197,9 +199,9 @@ def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
     bs = pd.DataFrame({"Cash": df["Cash Balance"]})
     bs["Inventory"] = df[["Inv S1", "Inv S2", "Inv S3"]].sum(axis=1) * p["initial_inventory_cost"] / total_pkgs
-    bs["Deferred Rev"] = -df["Prepaid Revenue Recog"].cumsum()
+    bs["Deferred Rev"] = df["Deferred Rev Bal"]
     bs["Total Curr Assets"] = bs["Cash"] + bs["Inventory"]
-    bs["Total Liabilities"] = -bs["Deferred Rev"]
+    bs["Total Liabilities"] = bs["Deferred Rev"]
     bs["Paid-in Capital"] = p["initial_inventory_cost"]
     bs["Retained Earnings"] = df["Operating Income"].cumsum()
     bs["Total Equity"] = bs["Paid-in Capital"] + bs["Retained Earnings"]
