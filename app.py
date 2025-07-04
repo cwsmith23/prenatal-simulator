@@ -77,11 +77,12 @@ def run_simulation(params):
         inv_cost = 0
         reorder_stages = []
         for s in (1, 2, 3):
+            # consume inventory
             inventory[s] -= expected_now[s]
-            future_need = expected_now[s] * params["lead_time"]
+            # lookahead buffer over lead time
+            future_need = sum(expected_now[s] for _ in range(params["lead_time"]))
             threshold = math.ceil((expected_now[s] + future_need) * params["reorder_safety"])
             if inventory[s] <= threshold:
-                # record stage that needs reorder this month
                 reorder_stages.append(f"S{s}")
                 pending_orders.append((month + params["lead_time"], s, params["reorder_qty"]))
                 inv_cost += params["reorder_cost"]
@@ -111,23 +112,24 @@ def run_simulation(params):
         # 7) Record metrics
         records.append({
             "Month": month,
-            "New Mon Subs": new_mon,
-            "New Pre Subs": new_pre,
+            "New Monthly Subs": new_mon,
+            "New Prepaid Members": new_pre,
             "Stage 1 To Ship": ship_mon[1] + ship_pre[1],
             "Stage 2 To Ship": ship_mon[2] + ship_pre[2],
             "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
-            "Inv S1": inventory[1],
-            "Inv S2": inventory[2],
-            "Inv S3": inventory[3],
+            "S1 Inventory": inventory[1],
+            "S2 Inventory": inventory[2],
+            "S3 Inventory": inventory[3],
             "Reorder": reorder_stages,
-            "Active Mon Subs": active_mon,
-            "Active Pre Subs": active_pre,
-            "Subscription Rev": round(rev_mon, 2),
-            "Prepaid Rev Recog": round(rev_pre, 2),
-            "Total Rev": round(rev_total, 2),
+            "Active Monthly Subs": active_mon,
+            "Active Prepaid Members": active_pre,
+            "Subscription Revenue": round(rev_mon, 2),
+            "Prepaid Revenue Recogonition": round(rev_pre, 2),
+            "Total Revenue": round(rev_total, 2),
             "CAC": round(cac, 2),
-            "COGS Mon": round(cogs_mon, 2),
-            "COGS Pre": round(cogs_pre, 2),
+            "COGS Monthly Subs": round(cogs_mon, 2),
+            "COGS Prepaid Members": round(cogs_pre, 2),
+            "Cost of Reorder": round(inv_cost, 2),
             "Net Flow": round(net, 2),
             "Cash Balance": round(cash_balance, 2)
         })
@@ -193,5 +195,6 @@ params = {
 }
 
 # Run & display
+
 df = run_simulation(params)
 st.dataframe(df)
