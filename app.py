@@ -51,7 +51,7 @@ data = {
     "churn_rate": churn,
     "lead_time": lead_time,
     "reorder_safety": safety,
-    "start_stage_dist": {1: s1, 2: s2, 3: s3},
+    "start_stage_dist": {1: st1, 2: st2, 3: st3},
     "ship1_dist": {1: ship1_1, 2: ship1_2, 3: ship1_3},
     "simulation_months": months
 }
