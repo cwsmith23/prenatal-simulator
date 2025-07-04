@@ -171,7 +171,7 @@ def run_simulation(params):
         total_rev = rev_mon + rev_pre
         cogs_mon = sum(ship_mon.values()) * cost_per_pkg
         total_cogs = cogs_mon + cogs_pre
-        cac = new_mon * params["cac_new_monthly"] + new_pre *=params["cac_new_prepaid"]
+        cac = new_mon * params["cac_new_monthly"] + new_pre * params["cac_new_prepaid"]
 
         # Financial metrics
         gross = total_rev - total_cogs
@@ -262,7 +262,7 @@ def build_financials(df, params):
     # Income Statement / Cash Flow
     is_df = pd.DataFrame({
         'Revenue': df['Total Revenue'],
-        'COGS': df['gross_cogs'],
+        'COGS': df['COGS Mon'] + df['COGS Pre'],
         'Operating Expenses': df['CAC'],
         'Shipping Expenses': df['Shipping Expense'],
         'Other Gains': 0,
@@ -294,3 +294,4 @@ st.dataframe(is_disp)
 st.subheader("Cash Flow Statement")
 cf_disp = cf_df.style.format({col: ",.2f" for col in cf_df.columns})
 st.dataframe(cf_disp)
+
