@@ -28,6 +28,8 @@ def run_simulation(params):
         })
 
     records = []
+    # For financial statements
+    liabilities_deferred = 0
     for month in range(1, months + 1):
         # 1) New signups & cash collection
         if month == 1:
@@ -72,15 +74,13 @@ def run_simulation(params):
                 s = min(1 + (age - 1)//3, 3)
                 ship_pre[s] += c["count"]
 
-        # 4) Reorder logic: record stage when order needed
+        # 4) Reorder logic
         expected_now = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
         inv_cost = 0
         reorder_stages = []
         for s in (1, 2, 3):
-            # consume inventory
             inventory[s] -= expected_now[s]
-            # lookahead buffer over lead time
-            future_need = sum(expected_now[s] for _ in range(params["lead_time"]))
+            future_need = expected_now[s] * params["lead_time"]
             threshold = math.ceil((expected_now[s] + future_need) * params["reorder_safety"])
             if inventory[s] <= threshold:
                 reorder_stages.append(f"S{s}")
@@ -109,32 +109,57 @@ def run_simulation(params):
         active_mon = sum(c["count"] for c in monthly_cohorts if month - c["start"] + 1 <= (4 - c["stage"]) * 3)
         active_pre = sum(c["count"] for c in prepaid_cohorts if month - c["start"] + 1 <= 9)
 
-        # 7) Record metrics
+        # update deferred liability
+        deferred_balance = sum(c["deferred"] for c in prepaid_cohorts)
+
+        # Record metrics
         records.append({
             "Month": month,
-            "New Monthly Subs": new_mon,
-            "New Prepaid Members": new_pre,
+            "New Mon Subs": new_mon,
+            "New Pre Subs": new_pre,
             "Stage 1 To Ship": ship_mon[1] + ship_pre[1],
             "Stage 2 To Ship": ship_mon[2] + ship_pre[2],
             "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
-            "S1 Inventory": inventory[1],
-            "S2 Inventory": inventory[2],
-            "S3 Inventory": inventory[3],
+            "Inv S1": inventory[1],
+            "Inv S2": inventory[2],
+            "Inv S3": inventory[3],
             "Reorder": reorder_stages,
-            "Active Monthly Subs": active_mon,
-            "Active Prepaid Members": active_pre,
-            "Subscription Revenue": round(rev_mon, 2),
-            "Prepaid Revenue Recogonition": round(rev_pre, 2),
-            "Total Revenue": round(rev_total, 2),
+            "Active Mon Subs": active_mon,
+            "Active Pre Subs": active_pre,
+            "Subscription Rev": round(rev_mon, 2),
+            "Prepaid Rev Recog": round(rev_pre, 2),
+            "Total Rev": round(rev_total, 2),
             "CAC": round(cac, 2),
-            "COGS Monthly Subs": round(cogs_mon, 2),
-            "COGS Prepaid Members": round(cogs_pre, 2),
+            "COGS Mon": round(cogs_mon, 2),
+            "COGS Pre": round(cogs_pre, 2),
             "Cost of Reorder": round(inv_cost, 2),
             "Net Flow": round(net, 2),
-            "Cash Balance": round(cash_balance, 2)
+            "Cash Balance": round(cash_balance, 2),
+            # financial statements aggregation placeholders
+            "Deferred Liabilities": round(deferred_balance, 2)
         })
 
     return pd.DataFrame(records).set_index("Month")
+
+# ─── Calculation of Financial Statements ─────────────────────────────────────────
+def build_financials(df):
+    # Income Statement
+    df['Gross Profit'] = df['Total Rev'] - (df['COGS Mon'] + df['COGS Pre'])
+    df['Operating Income'] = df['Gross Profit'] - df['CAC']
+
+    # Balance Sheet snapshots (end of each month)
+    bs = pd.DataFrame({
+        'Cash': df['Cash Balance'],
+        'Inventory': df[['Inv S1','Inv S2','Inv S3']].sum(axis=1)*params['initial_inventory_cost']/sum(params['initial_inventory'].values()),
+        'Deferred Liabilities': df['Deferred Liabilities']
+    })
+
+    # Cash Flow from Operations = Operating Income + Depreciation (none) + change in Working Capital
+    cf = pd.DataFrame({
+        'Operating Cash Flow': df['Operating Income']
+    })
+
+    return df, bs, cf
 
 # ─── Slider + Input Helper ──────────────────────────────────────────────────────
 def slider_with_input(label, min_val, max_val, default, step, is_float=False, fmt="%d"):
@@ -149,7 +174,7 @@ def slider_with_input(label, min_val, max_val, default, step, is_float=False, fm
     return num
 
 # ─── App Layout ────────────────────────────────────────────────────────────────
-st.title("BareBump Cash-Flow Simulator")
+st.title("BareBump Cash-Flow Simulator with Financials")
 st.sidebar.header("Parameters")
 
 # Sidebar controls
@@ -173,7 +198,7 @@ st2           = slider_with_input("Start S2", 0.0, 1.0, 0.30, 0.01, True, "%.2f"
 st3           = slider_with_input("Start S3", 0.0, 1.0, 0.10, 0.01, True, "%.2f")
 months        = slider_with_input("Months", 1, 36, 12, 1)
 
-# Parameters dict
+# Params dict
 params = {
     "monthly_price": monthly_price,
     "initial_subscribers": init_subs,
@@ -194,7 +219,19 @@ params = {
     "simulation_months": months
 }
 
-# Run & display
+# Run simulation
+simulation_df = run_simulation(params)
+# Build financials based on simulation
+sim_df, bs_df, cf_df = build_financials(simulation_df)
 
-df = run_simulation(params)
-st.dataframe(df)
+# Display main simulation table
+st.subheader("Monthly Simulation")
+st.dataframe(sim_df)
+
+# Display financial statements directly under the simulation
+st.subheader("Balance Sheet")
+st.dataframe(bs_df)
+
+st.subheader("Income Statement & Cash Flow")
+st.dataframe(cf_df)
+
