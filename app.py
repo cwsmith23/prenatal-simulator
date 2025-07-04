@@ -209,6 +209,7 @@ def run_simulation(params):
             "Total Revenue": round(total_rev, 2),
             "Gross Profit": round(gross, 2),
             "Operating Income": round(op_inc, 2),
+            "CAC": round(cac, 2),
             "Shipping Expense": round(ship_cost, 2),
             "Reorder Cost": round(inv_cost, 2),
             "Net Cash Flow": round(net, 2),
