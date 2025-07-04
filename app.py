@@ -267,29 +267,59 @@ def build_financials(df, params):
     return bs, is_df, cf
 
 # ─── Run and Display ─────────────────────────────────────────────────────────────
-sim_df = run_simulation(data)
-bs_df, is_df, cf_df = build_financials(sim_df, data)
+def build_financials(df, params):
+    # Cash
+    cash = df['Cash Balance']
 
-st.subheader("Monthly Simulation")
-# Format simulation table
-sim_disp = sim_df.style.format("{:,}", subset=[col for col in sim_df.columns if sim_df[col].dtype == 'int64'])
-sim_disp = sim_disp.format("{:,.2f}", subset=[col for col in sim_df.columns if sim_df[col].dtype == 'float64'])
-st.dataframe(sim_disp)
+    # Accounts Receivable = Revenue recognized – cash collected
+    ar = df['Total Revenue'].cumsum() - df['Cash Balance']
 
-st.subheader("Balance Sheet")
-# Format balance sheet
-bs_disp = bs_df.style.format("{:,}", subset=[col for col in bs_df.columns if bs_df[col].dtype == 'int64'])
-bs_disp = bs_disp.format("{:,.2f}", subset=[col for col in bs_df.columns if bs_df[col].dtype == 'float64'])
-st.dataframe(bs_disp)
+    # Inventory (already done)
+    inv = df[['Inv S1','Inv S2','Inv S3']].sum(axis=1) * params['initial_inventory_cost'] / sum(params['initial_inventory'].values())
 
-st.subheader("Income Statement / P&L")
-# Format income statement
-is_disp = is_df.style.format("{:,}", subset=[col for col in is_df.columns if is_df[col].dtype == 'int64'])
-is_disp = is_disp.format("{:,.2f}", subset=[col for col in is_df.columns if is_df[col].dtype == 'float64'])
-st.dataframe(is_disp)
+    # Total Current Assets
+    current_assets = cash + ar + inv
 
-st.subheader("Cash Flow Statement")
-# Format cash flow statement
-cf_disp = cf_df.style.format("{:,}", subset=[col for col in cf_df.columns if cf_df[col].dtype == 'int64'])
-cf_disp = cf_disp.format("{:,.2f}", subset=[col for col in cf_df.columns if cf_df[col].dtype == 'float64'])
-st.dataframe(cf_disp)
+    # PP&E, Goodwill (zeros or your values)
+    ppe = pd.Series(0, index=df.index)
+    gw  = pd.Series(0, index=df.index)
+
+    assets = pd.DataFrame({
+       'Cash': cash,
+       'Accounts Receivable': ar,
+       'Inventory': inv,
+       'Total Current Assets': current_assets,
+       'PP&E': ppe,
+       'Goodwill': gw,
+       'Total Assets': current_assets + ppe + gw
+    })
+
+    # Liabilities
+    # Accounts Payable: assume you pay inventory in same month (zero), or build from reorder costs
+    ap = pd.Series(0, index=df.index)
+    deferred = (df['Prepaid Revenue Recog'].shift(1).fillna(0).cumsum())
+    current_liab = ap + deferred
+    ltd = pd.Series(0, index=df.index)  # long‑term debt if any
+
+    liabilities = pd.DataFrame({
+       'Accounts Payable': ap,
+       'Deferred Rev': deferred,
+       'Total Current Liabilities': current_liab,
+       'Long Term Debt': ltd,
+       'Total Liabilities': current_liab + ltd
+    })
+
+    # Equity
+    pic = pd.Series(params['initial_inventory_cost'], index=df.index)  # constant
+    re  = df['Net Income'].cumsum()
+    total_eq = pic + re
+
+    equity = pd.DataFrame({
+       'Paid-in Capital': pic,
+       'Retained Earnings': re,
+       'Total Equity': total_eq
+    })
+
+    # Combine into one sheet
+    bs = pd.concat([assets, liabilities, equity], axis=1)
+    return bs
