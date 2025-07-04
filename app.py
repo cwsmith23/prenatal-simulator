@@ -28,6 +28,10 @@ inv_cost        = st.sidebar.number_input("Initial Inv Cost", 0, 500000, 75000)
 st1             = st.sidebar.number_input("Start S1 %", 0.0, 1.0, 0.60, format="%.2f")
 st2             = st.sidebar.number_input("Start S2 %", 0.0, 1.0, 0.30, format="%.2f")
 st3             = st.sidebar.number_input("Start S3 %", 0.0, 1.0, 0.10, format="%.2f")
+# New distribution for number of Stage1 shipments
+ship1_1         = st.sidebar.number_input("Pct gets 1 Stage1 shipment", 0.0, 1.0, 0.80, format="%.2f")
+ship1_2         = st.sidebar.number_input("Pct gets 2 Stage1 shipments", 0.0, 1.0, 0.15, format="%.2f")
+ship1_3         = st.sidebar.number_input("Pct gets 3 Stage1 shipments", 0.0, 1.0, 0.05, format="%.2f")
 months          = st.sidebar.number_input("Simulation Months", 1, 36, 12)
 
 # Bundle params
@@ -49,6 +53,8 @@ data = {
     "lead_time": lead_time,
     "reorder_safety": safety,
     "start_stage_dist": {1: st1, 2: st2, 3: st3},
+    # stage1 shipment distribution
+    "ship1_dist": {1: ship1_1, 2: ship1_2, 3: ship1_3},
     "simulation_months": months
 }
 
@@ -72,55 +78,67 @@ def run_simulation(params):
         prepaid_cohorts.append({"start":1,"count":init_pre,"stage":1,
                                  "deferred": init_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])})
     if init_mon > 0:
-        monthly_cohorts.append({"start":1,"count":init_mon,"stage":1})
+        # split initial monthly into cohorts by stage1 shipment limits
+        for limit, pct in params["ship1_dist"].items():
+            cnt = int(round(init_mon * pct))
+            if cnt > 0:
+                monthly_cohorts.append({"start":1,"count":cnt,"stage":1,
+                                         "s1_limit": limit, "s1_shipped": 0})
 
     records = []
     for month in range(1, months+1):
         # New subscribers
         if month == 1:
-            new_mon, new_pre = init_mon, init_pre
+            new_mon, new_pre = sum(c["count"] for c in monthly_cohorts if c.get("start")==1), init_pre
         else:
             alive = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
             tot = alive * params["subscriber_growth_rate"]
             new_pre = int(round(tot * params["percent_prepaid"]))
             new_mon = int(round(tot - new_pre))
+            # monthly new cohorts split by both start stage and s1 limits
             for st,pct in params["start_stage_dist"].items():
-                cnt = int(round(new_mon * pct))
-                if cnt>0:
-                    monthly_cohorts.append({"start":month,"count":cnt,"stage":st})
+                for limit, spct in params["ship1_dist"].items():
+                    cnt = int(round(new_mon * pct * spct))
+                    if cnt>0:
+                        monthly_cohorts.append({"start":month,"count":cnt,"stage":st,
+                                                 "s1_limit": limit, "s1_shipped": 0})
             if new_pre>0:
                 cash_balance += new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])
                 prepaid_cohorts.append({"start":month,"count":new_pre,"stage":1,
                                          "deferred": new_pre * params["monthly_price"] * 9 * (1 - params["prepaid_discount_rate"])})
 
         # Inventory arrivals
-        for _,s,qty in [o for o in pending_orders if o[0]==month]:
-            inventory[s] += qty
+        for _,s,qty in [o for o in pending_orders if o[0]==month]: inventory[s] += qty
         pending_orders = [o for o in pending_orders if o[0]>month]
 
-        # Shipments
-        ship_mon = {1:0,2:0,3:0}
+        # Shipments\        ship_mon = {1:0,2:0,3:0}
         ship_pre = {1:0,2:0,3:0}
         for c in monthly_cohorts:
             age = month - c["start"] + 1
-            max_age = (4-c["stage"]) * 3
+            # determine max months for this cohort based on start stage and s1 limit
+            if c["stage"]==1:
+                max_age = c["s1_limit"] + (3-1)*3  # after s1 limit, continue normal 3-month stages
+            else:
+                max_age = (4-c["stage"]) * 3
             if 1<=age<=max_age:
                 s = min(c["stage"] + (age-1)//3, 3)
+                # only ship stage1 if under s1 limit
+                if s==1 and c.get("s1_shipped",0)>=c.get("s1_limit",3): continue
                 ship_mon[s] += c["count"]
-                c["count"] = int(round(c["count"] * (1-params["churn_rate"])) )
+                if s==1: c["s1_shipped"] = c.get("s1_shipped",0)+1
+                c["count"] = int(round(c["count"] * (1-params["churn_rate"]) ))
         for c in prepaid_cohorts:
             age = month - c["start"] + 1
             if 1<=age<=9:
                 s = min(1 + (age-1)//3, 3)
-                ship_pre[s] += c["count"] 
+                ship_pre[s] += c["count"]
 
         # Reorder logic & inventory update
         exp = {s: ship_mon[s] + ship_pre[s] for s in (1,2,3)}
-        inv_cost = 0
-        reorder = []
+        inv_cost = 0; reorder = []
         for s in (1,2,3):
             inventory[s] -= exp[s]
-            future_need = sum(exp.get(ss,0) for ss in range(1,4)) * params["lead_time"]
+            future_need = exp[s] * params["lead_time"]
             threshold = math.ceil((exp[s] + future_need) * params["reorder_safety"])
             if inventory[s] <= threshold:
                 reorder.append(f"S{s}")
@@ -132,28 +150,20 @@ def run_simulation(params):
 
         # Revenue & COGS accrual
         rev_mon = sum(ship_mon.values()) * params["monthly_price"]
-        rev_pre = 0
-        cogs_pre = 0
+        rev_pre = cogs_pre = 0
         for c in prepaid_cohorts:
             age = month - c["start"] + 1
             if 1<=age<=9:
                 slice_rev = c["deferred"] / (10-age)
-                rev_pre += slice_rev
-                c["deferred"] -= slice_rev
+                rev_pre += slice_rev; c["deferred"] -= slice_rev
                 cogs_pre += sum(ship_pre.values()) * cost_per_pkg
-        total_rev = rev_mon + rev_pre
-        cogs_mon = sum(ship_mon.values()) * cost_per_pkg
-        total_cogs = cogs_mon + cogs_pre
-        cac = new_mon * params["cac_new_monthly"] + new_pre * params["cac_new_prepaid"]
+        total_rev = rev_mon + rev_pre; cogs_mon = sum(ship_mon.values()) * cost_per_pkg
+        total_cogs = cogs_mon + cogs_pre; cac = new_mon * params["cac_new_monthly"] + new_pre * params["cac_new_prepaid"]
 
         # Financial metrics
-        gross = total_rev - total_cogs
-        op_inc = gross - cac
-        net = op_inc - inv_cost - ship_cost
-        cash_balance += net
-
-        # Active subscribers
-        active_mon = sum(c["count"] for c in monthly_cohorts if (month - c["start"] + 1) <= (4-c["stage"])*3)
+        gross = total_rev - total_cogs; op_inc = gross - cac
+        net = op_inc - inv_cost - ship_cost; cash_balance += net
+        active_mon = sum(c["count"] for c in monthly_cohorts if (month - c["start"] + 1) <= ((4-c["stage"])*3))
         active_pre = sum(c["count"] for c in prepaid_cohorts if (month - c["start"] + 1) <=9)
         deferred = sum(c["deferred"] for c in prepaid_cohorts)
 
@@ -205,6 +215,8 @@ def build_financials(df, params):
         "Other Expenses": 0,
         "Gains": 0,
         "Losses": 0,
+        "Gross Profit": df['Gross Profit'],
+        "Operating Income": df['Op Income'],
         "Net Income": df['Op Income']
     })
     # Cash Flow Statement
@@ -214,7 +226,7 @@ def build_financials(df, params):
         "Financing Cash Flow": pd.Series([params['initial_inventory_cost']] + [0]*(len(df)-1), index=df.index),
         "Net Cash Flow": df['Net Flow']
     })
-    return df, bs, is_df.join(cf)
+    return df, bs, pd.concat([is_df, cf], axis=1)
 
 # ─── Run & Display ─────────────────────────────────────────────────────────────
 sim_df, bs_df, is_cf_df = build_financials(run_simulation(data), data)
