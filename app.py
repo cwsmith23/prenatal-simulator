@@ -283,14 +283,8 @@ st.dataframe(
           .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
 )
 
-st.subheader("Balance Sheet (End of Month)")
-st.dataframe(bs_df.style.format(fmt_flt))
-
 st.subheader("Annual Income Statement (Year 1)")
 st.dataframe(annual_is_df.style.format(fmt_flt))
-
-st.subheader("Monthly Cash Flow Statement")
-st.dataframe(cf_df.style.format(fmt_flt))
 
 # ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
 start_month = st.sidebar.number_input(
@@ -333,3 +327,9 @@ df3.insert(0, "", [lbl for lbl,_ in rows])
 
 st.subheader("Balance Sheet (3‑Month View)")
 st.dataframe(df3, hide_index=True, use_container_width=True)
+
+st.subheader("Balance Sheet (End of Month)")
+st.dataframe(bs_df.style.format(fmt_flt))
+
+st.subheader("Monthly Cash Flow Statement")
+st.dataframe(cf_df.style.format(fmt_flt))
