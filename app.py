@@ -6,31 +6,31 @@ import math
 st.title("BareBump Cash‑Flow Simulator & Financials")
 st.sidebar.header("Parameters")
 
-monthly_price = st.sidebar.number_input("Sale Price", 0, 500, 75)
-init_subs     = st.sidebar.number_input("Initial Subs", 0, 1000, 250)
-init_pre      = st.sidebar.number_input("Initial Prepaid", 0, 1000, 20)
+monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
+init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 1000, 250)
+init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 1000, 20)
 growth        = st.sidebar.number_input("Growth Rate", 0.0, 1.0, 0.10, format="%.2f")
 pct_pre       = st.sidebar.number_input("% Prepaid", 0.0, 1.0, 0.20, format="%.2f")
 disc_pre      = st.sidebar.number_input("Prepaid Discount", 0.0, 1.0, 0.10, format="%.2f")
-cac_mon       = st.sidebar.number_input("CAC Monthly", 0, 500, 20)
-cac_pre       = st.sidebar.number_input("CAC Prepaid", 0, 500, 20)
+cac_mon       = st.sidebar.number_input("Monthly CAC ($)", 0, 500, 20)
+cac_pre       = st.sidebar.number_input("Prepaid CAC ($)", 0, 500, 20)
 churn         = st.sidebar.number_input("Churn Rate", 0.0, 1.0, 0.05, format="%.2f")
 lead_time     = st.sidebar.number_input("Lead Time (months)", 0, 12, 1)
 safety        = st.sidebar.number_input("Safety Factor", 1.0, 3.0, 1.2, format="%.2f")
-rqty          = st.sidebar.number_input("Reorder Qty", 0, 5000, 1330)
-rcost         = st.sidebar.number_input("Reorder Cost", 0, 100000, 25000)
-ship_cost_pkg = st.sidebar.number_input("Shipping Cost/pkg", 0.0, 50.0, 5.0, format="%.2f")
-inv1          = st.sidebar.number_input("Inv Stage 1", 0, 5000, 1330)
-inv2          = st.sidebar.number_input("Inv Stage 2", 0, 5000, 1330)
-inv3          = st.sidebar.number_input("Inv Stage 3", 0, 5000, 1330)
-inv_cost      = st.sidebar.number_input("Initial Inv Cost", 0, 500000, 75000)
-st1           = st.sidebar.number_input("Start S1 %", 0.0, 1.0, 0.60, format="%.2f")
-st2           = st.sidebar.number_input("Start S2 %", 0.0, 1.0, 0.30, format="%.2f")
-st3           = st.sidebar.number_input("Start S3 %", 0.0, 1.0, 0.10, format="%.2f")
-ship1_1       = st.sidebar.number_input("Pct gets 1 S1", 0.0, 1.0, 0.80, format="%.2f")
-ship1_2       = st.sidebar.number_input("Pct gets 2 S1", 0.0, 1.0, 0.15, format="%.2f")
-ship1_3       = st.sidebar.number_input("Pct gets 3 S1", 0.0, 1.0, 0.05, format="%.2f")
-months        = st.sidebar.number_input("Months", 1, 36, 12)
+rqty          = st.sidebar.number_input("Reorder Quantity (#)", 0, 5000, 1330)
+rcost         = st.sidebar.number_input("Reorder Cost ($)", 0, 100000, 25000)
+ship_cost_pkg = st.sidebar.number_input("Shipping Cost per Pack ($)", 0.0, 50.0, 5.0, format="%.2f")
+inv1          = st.sidebar.number_input("Initial Inv Stage 1 (#)", 0, 5000, 1330)
+inv2          = st.sidebar.number_input("Initial Inv Stage 2 (#)", 0, 5000, 1330)
+inv3          = st.sidebar.number_input("Initial Inv Stage 3 (#)", 0, 5000, 1330)
+inv_cost      = st.sidebar.number_input("Initial Inventory Cost ($)", 0, 500000, 75000)
+st1           = st.sidebar.number_input("Start Stage 1 %", 0.0, 1.0, 0.60, format="%.2f")
+st2           = st.sidebar.number_input("Start Stage 2 %", 0.0, 1.0, 0.30, format="%.2f")
+st3           = st.sidebar.number_input("Start Stage 3 %", 0.0, 1.0, 0.10, format="%.2f")
+ship1_1       = st.sidebar.number_input("Pct Ship Stage 1 Initial", 0.0, 1.0, 0.80, format="%.2f")
+ship1_2       = st.sidebar.number_input("Pct Ship Stage 2 Initial", 0.0, 1.0, 0.15, format="%.2f")
+ship1_3       = st.sidebar.number_input("Pct Ship Stage 3 Initial", 0.0, 1.0, 0.05, format="%.2f")
+months        = st.sidebar.number_input("Simulation Months", 1, 36, 12)
 
 params = {
     "monthly_price":          monthly_price,
@@ -107,8 +107,7 @@ def run_simulation(p):
             if new_pre > 0:
                 cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
                 prepaid_cohorts.append({
-                    "start": m, "count": new_pre,
-                    "stage": 1,
+                    "start": m, "count": new_pre, "stage": 1,
                     "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
                 })
 
@@ -187,31 +186,31 @@ def run_simulation(p):
         records.append({
             "Month": m,
             "New Monthly Subs": new_mon,
-            "New Prepaid Members": new_pre,
-            "Stage 1 To Ship": ship_mon[1]+ship_pre[1],
-            "Stage 2 To Ship": ship_mon[2]+ship_pre[2],
-            "Stage 3 To Ship": ship_mon[3]+ship_pre[3],
+            "New Prepaid Subs": new_pre,
+            "Stage 1 Shipped": ship_mon[1] + ship_pre[1],
+            "Stage 2 Shipped": ship_mon[2] + ship_pre[2],
+            "Stage 3 Shipped": ship_mon[3] + ship_pre[3],
             "Inv S1": inventory[1],
             "Inv S2": inventory[2],
             "Inv S3": inventory[3],
-            "Reorder": ",".join(reorder),
+            "Reorder Triggered": ",".join(reorder),
             "Active Monthly Subs": act_mon,
-            "Active Prepaid Members": act_pre,
+            "Active Prepaid Subs": act_pre,
             "Monthly Revenue": round(rev_mon,2),
-            "Prepaid Revenue Recog": round(rev_pre,2),
+            "Prepaid Rev Recognized": round(rev_pre,2),
             "Total Revenue": round(total_rev,2),
             "Gross Profit": round(gross,2),
             "Operating Income": round(op_inc,2),
             "Net Income": round(net_income,2),
-            "COGS Mon": round(cogs_mon,2),
-            "COGS Pre": round(cogs_pre,2),
+            "COGS Monthly": round(cogs_mon,2),
+            "COGS Prepaid": round(cogs_pre,2),
             "Total COGS": round(total_cogs,2),
             "CAC": round(cac,2),
-            "Shipping Exp": round(ship_cost,2),
+            "Shipping Expense": round(ship_cost,2),
             "Reorder Cost": reorder_cost,
             "Net Cash Flow": round(net,2),
-            "Cash Balance": round(cash,2),
-            "Deferred Rev Bal": round(deferred_bal,2),
+            "Ending Cash Balance": round(cash,2),
+            "Deferred Rev Balance": round(deferred_bal,2),
         })
 
     return pd.DataFrame(records).set_index("Month")
@@ -220,58 +219,61 @@ def run_simulation(p):
 def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
 
-    # Balance Sheet
-    bs = pd.DataFrame({"Cash": df["Cash Balance"]})
-    bs["Inventory"]         = df[["Inv S1","Inv S2","Inv S3"]].sum(axis=1) * p["initial_inventory_cost"] / total_pkgs
-    bs["Deferred Rev"]      = df["Deferred Rev Bal"]
-    bs["Total Curr Assets"] = bs["Cash"] + bs["Inventory"]
-    bs["Total Liabilities"] = bs["Deferred Rev"]
-    bs["Paid-in Capital"]   = p["initial_inventory_cost"]
+    # Balance Sheet (end of month)
+    bs = pd.DataFrame({"Ending Cash Balance": df["Ending Cash Balance"]})
+    bs["Inventory Value"] = (
+        df[["Inv S1", "Inv S2", "Inv S3"]].sum(axis=1)
+        * p["initial_inventory_cost"] / total_pkgs
+    )
+    bs["Deferred Revenue Liability"] = df["Deferred Rev Balance"]
+    bs["Total Current Assets"] = bs["Ending Cash Balance"] + bs["Inventory Value"]
+    bs["Total Liabilities"] = bs["Deferred Revenue Liability"]
+    bs["Paid-in Capital Injection"] = p["initial_inventory_cost"]
     bs["Retained Earnings"] = df["Net Income"].cumsum()
-    bs["Total Equity"]      = bs["Paid-in Capital"] + bs["Retained Earnings"]
-    bs["Total L+E"]         = bs["Total Liabilities"] + bs["Total Equity"]
+    bs["Total Equity"] = bs["Paid-in Capital Injection"] + bs["Retained Earnings"]
+    bs["Total Liabilities & Equity"] = bs["Total Liabilities"] + bs["Total Equity"]
 
-    # Income Statement
+    # Annual Income Statement
     is_df = pd.DataFrame({
-        "Revenue":      df["Total Revenue"],
-        "COGS":         df["Total COGS"],
+        "Revenue": df["Total Revenue"],
+        "COGS": df["Total COGS"],
         "Gross Profit": df["Gross Profit"],
-        "Op Expenses":  df["CAC"] + df["Shipping Exp"],
-        "Op Income":    df["Operating Income"] - df["Shipping Exp"],
-        "Net Income":   df["Net Income"],
+        "Operating Expenses": df["CAC"] + df["Shipping Expense"],
+        "Operating Income": df["Operating Income"] - df["Shipping Expense"],
+        "Net Income": df["Net Income"],
     })
+    annual_is = is_df.head(12).sum().to_frame().T
+    annual_is.index = ["Year 1"]
 
-    # Cash Flow Statement
-    fin_flows = df["Reorder Cost"].mul(-1).copy()
-    fin_flows.iloc[0] -= p["initial_inventory_cost"]
-
+    # Monthly Cash Flow Statement
     cf = pd.DataFrame({
-        "Op Cash Flow": df["Net Cash Flow"],
-        "Fin Cash Flow": fin_flows,
+        "Operating Cash Flow (Monthly)": df["Net Cash Flow"],
+        "Financing Cash Flow (Monthly)": df["Reorder Cost"].mul(-1)
     })
+    cf.iloc[0, cf.columns.get_loc("Financing Cash Flow (Monthly)")] -= p["initial_inventory_cost"]
 
-    return bs, is_df, cf
+    return bs, annual_is, cf
 
 
 # ─── Run & Display ─────────────────────────────────────────────────────────────
-sim_df  = run_simulation(params)
-bs_df, is_df, cf_df = build_financials(sim_df, params)
+sim_df = run_simulation(params)
+bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
 
-st.subheader("Monthly Simulation")
+st.subheader("Monthly Simulation Details")
 st.dataframe(
-    sim_df.style
-         .format(fmt_int, subset=sim_df.select_dtypes("int").columns)
-         .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
+    sim_df
+        .style.format(fmt_int, subset=sim_df.select_dtypes("int").columns)
+        .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
 )
 
-st.subheader("Balance Sheet")
+st.subheader("Balance Sheet (End of Month)")
 st.dataframe(bs_df.style.format(fmt_flt, subset=bs_df.columns))
 
-st.subheader("Income Statement / P&L")
-st.dataframe(is_df.style.format(fmt_flt, subset=is_df.columns))
+st.subheader("Annual Income Statement (Year 1)")
+st.dataframe(annual_is_df.style.format(fmt_flt, subset=annual_is_df.columns))
 
-st.subheader("Cash Flow Statement")
+st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt, subset=cf_df.columns))
