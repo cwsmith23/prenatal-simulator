@@ -296,10 +296,10 @@ start_month = st.sidebar.number_input(
 slice_df = bs_df.loc[start_month:start_month+2]
 fmt3 = slice_df.T.copy()
 fmt3.index = [
-    "Cash","Inventory","Current Assets",
-    "Unearned Revenue","Liabilities",
-    "Paid‑in Capital","Retained Earnings",
-    "Total Equity","Total L&E"
+    "Cash", "Inventory", "Unearned Revenue",
+    "Current Assets", "Liabilities",
+    "Paid‑in Capital", "Retained Earnings",
+    "Total Equity", "Total L&E"
 ]
 
 rows = []
