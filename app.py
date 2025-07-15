@@ -289,15 +289,15 @@ st.dataframe(annual_is_df.style.format(fmt_flt))
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt))
 
-# ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month View", 1, params["simulation_months"]-2, 1
 )
 slice_df = bs_df.loc[start_month:start_month+2]
 fmt3 = slice_df.T.copy()
 fmt3.index = [
-    "Cash","Inventory","Current Assets",
-    "Unearned Revenue","Liabilities",
+    "Cash","Inventory","Unearned Revenue",
+    "Total Current Assets","Total Liabilities",
     "Paid‑in Capital","Retained Earnings",
     "Total Equity","Total L&E"
 ]
@@ -305,18 +305,21 @@ fmt3.index = [
 rows = []
 # Current Assets
 rows.append(("Current Assets:", ["", "", ""]))
-for lbl in ["Cash","Inventory","Current Assets"]:
-    rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
+for lbl in ["Cash","Inventory","Total Current Assets"]:
+    ind = "  " if lbl != "Total Current Assets" else ""
+    rows.append((f"{ind}{lbl}", [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 # Current Liabilities
 rows.append(("Current Liabilities:", ["", "", ""]))
-for lbl in ["Unearned Revenue","Liabilities"]:
-    rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
+for lbl in ["Unearned Revenue","Total Liabilities"]:
+    ind = "  " if lbl != "Total Liabilities" else ""
+    rows.append((f"{ind}{lbl}", [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 # Equity
 rows.append(("Shareholders' Equity:", ["", "", ""]))
 for lbl in ["Paid‑in Capital","Retained Earnings","Total Equity"]:
-    rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
+    ind = "  " if lbl != "Total Equity" else ""
+    rows.append((f"{ind}{lbl}", [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 # Total L&E
 rows.append(("Total L&E", [f"{v:,.2f}" for v in fmt3.loc["Total L&E"]]))
