@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import math
 
-# ─── Sidebar Inputs ───────────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ─────────────────────────────────────────────────────────────
 st.title("BareBump Cash‑Flow Simulator & Financials")
 st.sidebar.header("Parameters")
 
@@ -202,6 +202,7 @@ def run_simulation(p):
 
     return pd.DataFrame(records).set_index("Month")
 
+
 def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
     bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
@@ -215,11 +216,11 @@ def build_financials(df, p):
     bs["Total L&E"]           = bs["Total Liabilities"] + bs["Total Equity"]
 
     # reorder columns: Assets → Liabilities → Equity
-    bs = bs[
-        ["Cash Balance","Inventory Value","Total Current Assets",
-         "Unearned Revenue","Total Liabilities",
-         "Paid‑in Capital","Retained Earnings","Total Equity","Total L&E"]
-    ]
+    bs = bs[[
+        "Cash Balance","Inventory Value","Total Current Assets",
+        "Unearned Revenue","Total Liabilities",
+        "Paid‑in Capital","Retained Earnings","Total Equity","Total L&E"
+    ]]
 
     # Annual Income Statement (Year 1)
     is_df = pd.DataFrame({
@@ -242,9 +243,9 @@ def build_financials(df, p):
 
     return bs, annual_is, cf
 
-# ─── Run & Display ────────────────────────────────────────────────────────────────
+# ─── Run & Display ──────────────────────────────────────────────────────────────
 sim_df      = run_simulation(params)
-bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
+bs_df,annual_is_df,cf_df = build_financials(sim_df, params)
 
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
@@ -264,7 +265,7 @@ st.dataframe(annual_is_df.style.format(fmt_flt, subset=annual_is_df.columns))
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt, subset=cf_df.columns))
 
-# ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month Balance Sheet",
     min_value=1,
