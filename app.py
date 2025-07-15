@@ -6,7 +6,7 @@ import math
 st.set_page_config(layout="wide")
 st.title("BareBump Cash‑Flow Simulator & Financials")
 
-# ─── Sidebar Inputs ─────────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 1000, 250)
 init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 1000, 20)
@@ -55,11 +55,12 @@ params = {
     "simulation_months":      months
 }
 
-# ─── Simulation ─────────────────────────────────────────────────────────────────
+# ─── Simulation ───────────────────────────────────────────────────────────────
 def run_simulation(p):
     total_pkgs   = sum(p["initial_inventory"].values())
     cost_per_pkg = p["initial_inventory_cost"] / total_pkgs
     inventory      = {s: int(q) for s, q in p["initial_inventory"].items()}
+    monthly_amt    = p["monthly_price"] * (1 - p["prepaid_discount_rate"])
     cash           = 0
     pending        = []
     monthly_cohorts = []
@@ -67,10 +68,11 @@ def run_simulation(p):
 
     # Month 1 seeds & deferred
     if p["initial_prepaid"] > 0:
-        cash += p["initial_prepaid"] * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+        cash += p["initial_prepaid"] * monthly_amt * 9
         prepaid_cohorts.append({
-            "start": 1, "count": p["initial_prepaid"],
-            "deferred": p["initial_prepaid"] * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+            "start": 1,
+            "count": p["initial_prepaid"],
+            "deferred": p["initial_prepaid"] * monthly_amt * 9,
         })
     if p["initial_subscribers"] > 0:
         for lim, pct in p["ship1_dist"].items():
@@ -95,10 +97,11 @@ def run_simulation(p):
                     if cnt:
                         monthly_cohorts.append({"start": m, "count": cnt, "s1_limit": lim})
             if new_pre:
-                cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+                cash += new_pre * monthly_amt * 9
                 prepaid_cohorts.append({
-                    "start": m, "count": new_pre,
-                    "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+                    "start": m,
+                    "count": new_pre,
+                    "deferred": new_pre * monthly_amt * 9,
                 })
 
         # Arrivals & inventory cost
@@ -125,11 +128,14 @@ def run_simulation(p):
                 continue
             ship_mon[s] += c["count"]
             c["count"] = int(round(c["count"] * (1 - p["churn_rate"])))
+        rev_pre = 0
         for c in prepaid_cohorts:
             age = m - c["start"] + 1
             if 1 <= age <= 9:
                 s = min(1 + (age - 1) // 3, 3)
                 ship_pre[s] += c["count"]
+                rev_pre += c["count"] * monthly_amt
+                c["deferred"] -= c["count"] * monthly_amt
 
         # Reorder logic
         exp = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
@@ -144,11 +150,6 @@ def run_simulation(p):
 
         # Financials
         rev_mon = sum(ship_mon.values()) * p["monthly_price"]
-        rev_pre = sum(
-            c["deferred"] / (10 - (m - c["start"] + 1))
-            for c in prepaid_cohorts
-            if 1 <= (m - c["start"] + 1) <= 9
-        )
         cogs_mon = sum(ship_mon.values()) * cost_per_pkg
         cogs_pre = sum(ship_pre.values()) * cost_per_pkg
         total_rev, total_cogs = rev_mon + rev_pre, cogs_mon + cogs_pre
@@ -188,6 +189,16 @@ def run_simulation(p):
             "Deferred Rev Balance": round(deferred_bal, 2),
         })
 
+        # Remove expired cohorts for next month's calculations
+        monthly_cohorts = [
+            c for c in monthly_cohorts
+            if (m - c["start"] + 1) <= c["s1_limit"] + 6 and c["count"] > 0
+        ]
+        prepaid_cohorts = [
+            c for c in prepaid_cohorts
+            if (m - c["start"] + 1) < 9
+        ]
+
     return pd.DataFrame(records).set_index("Month")
 
 
@@ -217,15 +228,15 @@ def build_financials(df, p):
 
     # Monthly Cash Flow Statement
     cf = pd.DataFrame({
-        "Operating Cash Flow": df["Net Cash Flow"],
-        "Financing Cash Flow": df["Reorder Cost"].mul(-1)
+        "Operating Cash Flow": df["Net Cash Flow"],  # already includes reorder cost
+        "Financing Cash Flow": pd.Series(0, index=df.index)
     })
     cf.iloc[0, cf.columns.get_loc("Financing Cash Flow")] -= p["initial_inventory_cost"]
 
     return bs, annual_is, cf
 
 
-# ─── Run & Display Standard Reports ─────────────────────────────────────────────
+# ─── Run & Display Standard Reports ───────────────────────────────────────────
 sim_df, bs_df, annual_is_df, cf_df = None, None, None, None
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
@@ -249,8 +260,7 @@ st.dataframe(annual_is_df.style.format(fmt_flt))
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt))
 
-
-# ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month Balance Sheet", 1, params["simulation_months"] - 2, 1
 )
