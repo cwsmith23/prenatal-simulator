@@ -5,7 +5,7 @@ import math
 st.set_page_config(layout="wide")
 st.title("BareBump Cash‑Flow Simulator & Financials")
 
-# ─── Sidebar Inputs ───────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ─────────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 1000, 250)
 init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 1000, 20)
@@ -18,7 +18,9 @@ churn         = st.sidebar.number_input("Churn Rate", 0.0, 1.0, 0.05, format="%.
 lead_time     = st.sidebar.number_input("Lead Time (months)", 0, 12, 1)
 safety        = st.sidebar.number_input("Safety Factor", 1.0, 3.0, 1.2, format="%.2f")
 rqty          = st.sidebar.number_input("Reorder Quantity (#)", 0, 5000, 1330)
-rcost         = st.sidebar.number_input("Reorder Cost ($)", 0, 100000, 25000)
+rcost1        = st.sidebar.number_input("Reorder Cost Stage 1 ($)", 0, 100000, 25000)
+rcost2        = st.sidebar.number_input("Reorder Cost Stage 2 ($)", 0, 100000, 25000)
+rcost3        = st.sidebar.number_input("Reorder Cost Stage 3 ($)", 0, 100000, 25000)
 ship_cost_pkg = st.sidebar.number_input("Shipping Cost per Pack ($)", 0.0, 50.0, 5.0, format="%.2f")
 inv1          = st.sidebar.number_input("Initial Inv Stage 1 (#)", 0, 5000, 1330)
 inv2          = st.sidebar.number_input("Initial Inv Stage 2 (#)", 0, 5000, 1330)
@@ -44,7 +46,7 @@ params = {
     "initial_inventory":      {1: inv1, 2: inv2, 3: inv3},
     "initial_inventory_cost": inv_cost,
     "reorder_qty":            rqty,
-    "reorder_cost":           rcost,
+    "reorder_cost":           {1: rcost1, 2: rcost2, 3: rcost3},
     "shipping_cost_pkg":      ship_cost_pkg,
     "churn_rate":             churn,
     "lead_time":              lead_time,
@@ -172,8 +174,9 @@ def run_simulation(p):
             fut = exp[s] * p["lead_time"]
             thr = math.ceil((exp[s] + fut) * p["reorder_safety"])
             if inventory[s] <= thr:
-                pending.append((m + p["lead_time"], s, p["reorder_qty"], p["reorder_cost"]))
-                reorder_cost += p["reorder_cost"]
+                cost = p["reorder_cost"][s]
+                pending.append((m + p["lead_time"], s, p["reorder_qty"], cost))
+                reorder_cost += cost
                 reorder_events.append(f"S{s}")
 
         # Financial calculations
@@ -266,7 +269,7 @@ def build_financials(df, p):
     return bs, annual_is, cf
 
 
-# ─── Run & Display Reports ────────────────────────────────────────────────────
+# ─── Run & Display Reports ─────────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
