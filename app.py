@@ -277,7 +277,7 @@ bs_slice    = bs_df.loc[start_month:start_month+2]
 formatted_bs= bs_slice.T.copy()
 formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
 formatted_bs.index = pd.MultiIndex.from_tuples([
-    ("Assets",               "Cash Balance"),
+    ("Assets", "Cash Balance"               "Cash Balance"),
     ("Assets",               "Inventory Value"),
     ("Assets",               "Total Current Assets"),
     ("Liabilities",          "Unearned Revenue"),
