@@ -60,9 +60,9 @@ def run_simulation(p):
     total_pkgs   = sum(p["initial_inventory"].values())
     cost_per_pkg = p["initial_inventory_cost"] / total_pkgs
 
-    inventory      = {s: int(q) for s, q in p["initial_inventory"].items()}
-    cash           = 0
-    pending        = []
+    inventory       = {s: int(q) for s, q in p["initial_inventory"].items()}
+    cash            = 0
+    pending         = []
     monthly_cohorts = []
     prepaid_cohorts = []
 
@@ -84,7 +84,7 @@ def run_simulation(p):
 
     records = []
     for m in range(1, p["simulation_months"] + 1):
-        # New subs & prepaid each month
+        # New subs & prepaid
         if m == 1:
             new_mon = sum(c["count"] for c in monthly_cohorts)
             new_pre = p["initial_prepaid"]
@@ -109,7 +109,7 @@ def run_simulation(p):
                     "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
                 })
 
-        # Process incoming inventory orders
+        # Process incoming inventory
         inv_cost = 0
         for arr in [o for o in pending if o[0] == m]:
             _, s, qty, cost = arr
@@ -223,43 +223,11 @@ def build_financials(df, p):
         "Paid‑in Capital","Retained Earnings","Total Equity","Total L&E"
     ]]
 
-    # Annual Income Statement
-    is_df = pd.DataFrame({
-        "Revenue":      df["Total Revenue"],
-        "COGS":         df["Total COGS"],
-        "Gross Profit": df["Gross Profit"],
-        "Op Expenses":  df["CAC"] + df["Shipping Exp"],
-        "Op Income":    df["Operating Income"] - df["Shipping Exp"],
-        "Net Income":   df["Net Income"],
-    })
-    annual_is = is_df.head(12).sum().to_frame().T
-    annual_is.index = ["Year 1"]
-
-    # Monthly Cash Flow Statement
-    cf = pd.DataFrame({
-        "Operating Cash Flow": df["Net Cash Flow"],
-        "Financing Cash Flow": df["Reorder Cost"].mul(-1)
-    })
-    cf.iloc[0, cf.columns.get_loc("Financing Cash Flow")] -= p["initial_inventory_cost"]
-
-    return bs, annual_is, cf
+    return bs
 
 # ─── Run & Display Standard Reports ─────────────────────────────────────────────
 sim_df     = run_simulation(params)
-bs_df, _, _ = build_financials(sim_df, params)
-
-fmt_int = "{:,}"
-fmt_flt = "{:,.2f}"
-
-st.subheader("Monthly Simulation Details")
-st.dataframe(
-    sim_df.style
-          .format(fmt_int, subset=sim_df.select_dtypes("int").columns)
-          .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
-)
-
-st.subheader("Balance Sheet (End of Month)")
-st.dataframe(bs_df.style.format(fmt_flt, subset=bs_df.columns))
+bs_df      = build_financials(sim_df, params)
 
 # ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
 start_month = st.sidebar.number_input(
@@ -284,18 +252,18 @@ formatted.index = [
 
 # Build rows exactly as in your Excel
 rows = []
-# Current Assets section
+# Current Assets
 rows.append(("Current Assets:", ["", "", ""]))
 rows.append(("Cash",              formatted.loc["Cash"].tolist()))
 rows.append(("Inventory",         formatted.loc["Inventory"].tolist()))
 rows.append(("Total Current Assets", formatted.loc["Current Assets"].tolist()))
 rows.append(("",                  ["", "", ""]))  # blank spacer
-# Current Liabilities section
+# Current Liabilities
 rows.append(("Current Liabilities:", ["", "", ""]))
 rows.append(("Unearned Revenue",     formatted.loc["Unearned Revenue"].tolist()))
 rows.append(("Liabilities",          formatted.loc["Liabilities"].tolist()))
 rows.append(("",                     ["", "", ""]))  # blank spacer
-# Shareholders' Equity section
+# Shareholders' Equity
 rows.append(("Shareholders' Equity:", ["", "", ""]))
 rows.append(("Paid‑in Capital",       formatted.loc["Paid‑in Capital"].tolist()))
 rows.append(("Retained Earnings",     formatted.loc["Retained Earnings"].tolist()))
@@ -308,9 +276,13 @@ cols       = [f"Month {m}" for m in slice_df.index]
 display_df = pd.DataFrame([vals for _, vals in rows], columns=cols)
 display_df.insert(0, "", [lbl for lbl, _ in rows])
 
+# Format numeric columns with commas & two decimals, hide index
+styled = display_df.style.format(
+    {col: "{:,.2f}" for col in cols}
+).hide_index()
+
 st.subheader("Balance Sheet (3‑Month View)")
 st.dataframe(
-    display_df,
-    use_container_width=True,
-    hide_index=True
+    styled,
+    use_container_width=True
 )
