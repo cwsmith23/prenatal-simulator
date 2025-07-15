@@ -277,13 +277,13 @@ formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
 
 # Single‑level index labels
 formatted_bs.index = [
-    "   Cash",
-    "   Inventory",
+    "Cash",
+    "Inventory",
     "Current Assets",
-    "   Unearned Revenue",
+    "Unearned Revenue",
     "Liabilities",
-    "   Paid‑in Capital",
-    "   Retained Earnings",
+    "Paid‑in Capital",
+    "Retained Earnings",
     "Total Equity",
     "Total L&E"
 ]
