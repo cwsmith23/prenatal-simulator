@@ -90,7 +90,7 @@ def run_simulation(p):
 
     records = []
     for m in range(1, months + 1):
-        # New subs
+        # New subscribers logic…
         if m == 1:
             new_mon = sum(c["count"] for c in monthly_cohorts)
             new_pre = init_pre
@@ -99,15 +99,23 @@ def run_simulation(p):
             tot = alive * p["subscriber_growth_rate"]
             new_pre = int(round(tot * p["percent_prepaid"]))
             new_mon = int(round(tot - new_pre))
-            # allocate new cohorts
+            # allocate new monthly cohorts
             for stg, spct in p["start_stage_dist"].items():
                 for lim, pct in p["ship1_dist"].items():
                     cnt = int(round(new_mon * spct * pct))
                     if cnt > 0:
-                        monthly_cohorts.append({"start": m, "count": cnt, "stage": stg, "s1_limit": lim, "s1_shipped": 0})
+                        monthly_cohorts.append({
+                            "start": m, "count": cnt,
+                            "stage": stg, "s1_limit": lim, "s1_shipped": 0
+                        })
+            # deferred cash for new prepaid
             if new_pre > 0:
                 cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
-                prepaid_cohorts.append({"start": m, "count": new_pre, "stage":1, "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])})
+                prepaid_cohorts.append({
+                    "start": m, "count": new_pre,
+                    "stage": 1,
+                    "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+                })
 
         # Inventory arrivals
         inv_cost = 0
@@ -117,26 +125,26 @@ def run_simulation(p):
             inv_cost += cost
         pending = [o for o in pending if o[0] > m]
 
-        # Shipments (custom S1 limits)
-        ship_mon = {1: 0, 2: 0, 3: 0}
-        ship_pre = {1: 0, 2: 0, 3: 0}
+        # Shipments for monthly & prepaid cohorts…
+        ship_mon = {1:0,2:0,3:0}
+        ship_pre = {1:0,2:0,3:0}
         for c in monthly_cohorts:
             age = m - c["start"] + 1
             lim = c["s1_limit"]
             if age <= lim:
                 s = 1; c["s1_shipped"] += 1
-            elif age <= lim + 3:
+            elif age <= lim+3:
                 s = 2
-            elif age <= lim + 6:
+            elif age <= lim+6:
                 s = 3
             else:
                 continue
             ship_mon[s] += c["count"]
-            c["count"] = int(round(c["count"] * (1 - p["churn_rate"])) )
+            c["count"] = int(round(c["count"] * (1 - p["churn_rate"])))
         for c in prepaid_cohorts:
             age = m - c["start"] + 1
             if 1 <= age <= 9:
-                s = min(1 + (age - 1) // 3, 3)
+                s = min(1 + (age-1)//3, 3)
                 ship_pre[s] += c["count"]
 
         # Reorder logic
@@ -146,16 +154,14 @@ def run_simulation(p):
         for s in (1,2,3):
             inventory[s] -= exp[s]
             fut = exp[s] * p["lead_time"]
-            thr = math.ceil((exp[s] + fut) * p["reorder_safety"] )
+            thr = math.ceil((exp[s] + fut) * p["reorder_safety"])
             if inventory[s] <= thr:
                 reorder.append(f"S{s}")
                 pending.append((m + p["lead_time"], s, p["reorder_qty"], p["reorder_cost"]))
                 reorder_cost += p["reorder_cost"]
 
-        # Shipping cost
+        # Costs & revenues
         ship_cost = sum(exp.values()) * p["shipping_cost_pkg"]
-
-        # Revenue & COGS
         rev_mon = sum(ship_mon.values()) * p["monthly_price"]
         rev_pre = 0
         for c in prepaid_cohorts:
@@ -164,50 +170,65 @@ def run_simulation(p):
                 slice_rev = c["deferred"] / (10 - age)
                 rev_pre += slice_rev
                 c["deferred"] -= slice_rev
+
         cogs_mon = sum(ship_mon.values()) * cost_per_pkg
         cogs_pre = sum(ship_pre.values()) * cost_per_pkg
-        total_rev = rev_mon + rev_pre; total_cogs = cogs_mon + cogs_pre
+        total_rev = rev_mon + rev_pre
+        total_cogs = cogs_mon + cogs_pre
+
         cac = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
         gross = total_rev - total_cogs
         op_inc = gross - cac
         net_income = op_inc - ship_cost
-        # cash changes exclude non-cash COGS and recognize monthly revenue
-        net = rev_mon - cac - ship_cost - inv_cost
+
+        # *** include reorder_cost here ***
+        net = rev_mon - cac - ship_cost - inv_cost - reorder_cost
         cash += net
 
-        # Active counts
-        act_mon = sum(c["count"] for c in monthly_cohorts if 1 <= (m - c["start"] + 1) <= ((4 - c["stage"]) * 3))
-        act_pre = sum(c["count"] for c in prepaid_cohorts if 1 <= (m - c["start"] + 1) <= 9)
+        # Active counts & deferred balance
+        act_mon = sum(c["count"] for c in monthly_cohorts if 1 <= (m-c["start"]+1) <= ((4-c["stage"])*3))
+        act_pre = sum(c["count"] for c in prepaid_cohorts if 1 <= (m-c["start"]+1) <= 9)
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
 
         records.append({
-            "Month": m, "New Monthly Subs": new_mon,
+            "Month": m,
+            "New Monthly Subs": new_mon,
             "New Prepaid Members": new_pre,
-            "Stage 1 To Ship": ship_mon[1] + ship_pre[1],
-            "Stage 2 To Ship": ship_mon[2] + ship_pre[2],
-            "Stage 3 To Ship": ship_mon[3] + ship_pre[3],
-            "Inv S1": inventory[1], "Inv S2": inventory[2], "Inv S3": inventory[3],
+            "Stage 1 To Ship": ship_mon[1]+ship_pre[1],
+            "Stage 2 To Ship": ship_mon[2]+ship_pre[2],
+            "Stage 3 To Ship": ship_mon[3]+ship_pre[3],
+            "Inv S1": inventory[1],
+            "Inv S2": inventory[2],
+            "Inv S3": inventory[3],
             "Reorder": ",".join(reorder),
-            "Active Monthly Subs": act_mon, "Active Prepaid Members": act_pre,
-            "Monthly Revenue": round(rev_mon,2), "Prepaid Revenue Recog": round(rev_pre,2),
-            "Total Revenue": round(total_rev,2), "Gross Profit": round(gross,2),
+            "Active Monthly Subs": act_mon,
+            "Active Prepaid Members": act_pre,
+            "Monthly Revenue": round(rev_mon,2),
+            "Prepaid Revenue Recog": round(rev_pre,2),
+            "Total Revenue": round(total_rev,2),
+            "Gross Profit": round(gross,2),
             "Operating Income": round(op_inc,2),
             "Net Income": round(net_income,2),
-            "COGS Mon": round(cogs_mon,2), "COGS Pre": round(cogs_pre,2),
+            "COGS Mon": round(cogs_mon,2),
+            "COGS Pre": round(cogs_pre,2),
             "Total COGS": round(total_cogs,2),
-            "CAC": round(cac,2), "Shipping Exp": round(ship_cost,2),
+            "CAC": round(cac,2),
+            "Shipping Exp": round(ship_cost,2),
             "Reorder Cost": reorder_cost,
-            "Net Cash Flow": round(net,2), "Cash Balance": round(cash,2),
-            "Deferred Rev Bal": round(deferred_bal,2)
+            "Net Cash Flow": round(net,2),
+            "Cash Balance": round(cash,2),
+            "Deferred Rev Bal": round(deferred_bal,2),
         })
 
     return pd.DataFrame(records).set_index("Month")
 
-# ─── Financial Statements ──────────────────────────────────────────────────────
 def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
     bs = pd.DataFrame({"Cash": df["Cash Balance"]})
-    bs["Inventory"] = df[["Inv S1", "Inv S2", "Inv S3"]].sum(axis=1) * p["initial_inventory_cost"] / total_pkgs
+    bs["Inventory"] = (
+        df[["Inv S1","Inv S2","Inv S3"]].sum(axis=1)
+        * p["initial_inventory_cost"] / total_pkgs
+    )
     bs["Deferred Rev"] = df["Deferred Rev Bal"]
     bs["Total Curr Assets"] = bs["Cash"] + bs["Inventory"]
     bs["Total Liabilities"] = bs["Deferred Rev"]
@@ -222,12 +243,14 @@ def build_financials(df, p):
         "Gross Profit": df["Gross Profit"],
         "Op Expenses": df["CAC"] + df["Shipping Exp"],
         "Op Income": df["Operating Income"] - df["Shipping Exp"],
-        "Net Income": df["Net Income"]
+        "Net Income": df["Net Income"],
     })
 
+    # include initial cap injection and each month's reorder outflow
+    fin_flows = [-p["initial_inventory_cost"]] + df["Reorder Cost"].mul(-1).tolist()
     cf = pd.DataFrame({
         "Op Cash Flow": df["Net Cash Flow"],
-        "Fin Cash Flow": [p["initial_inventory_cost"]] + [0] * (len(df) - 1)
+        "Fin Cash Flow": fin_flows,
     })
 
     return bs, is_df, cf
@@ -242,8 +265,8 @@ fmt_flt = "{:,.2f}"
 st.subheader("Monthly Simulation")
 st.dataframe(
     sim_df.style
-        .format(fmt_int, subset=sim_df.select_dtypes("int").columns)
-        .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
+         .format(fmt_int, subset=sim_df.select_dtypes("int").columns)
+         .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
 )
 
 st.subheader("Balance Sheet")
