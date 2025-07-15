@@ -276,17 +276,41 @@ start_month = st.sidebar.number_input(
 bs_slice    = bs_df.loc[start_month:start_month+2]
 formatted_bs= bs_slice.T.copy()
 formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
-formatted_bs.index = pd.MultiIndex.from_tuples([
-    ("Assets", "Cash Balance"               "Cash Balance"),
-    ("Assets",               "Inventory Value"),
-    ("Assets",               "Total Current Assets"),
-    ("Liabilities",          "Unearned Revenue"),
-    ("Liabilities",          "Total Liabilities"),
-    ("Equity",               "Paid‑in Capital"),
-    ("Equity",               "Retained Earnings"),
-    ("Equity",               "Total Equity"),
-    ("",                     "Total L&E"),
-], names=["",""])
+
+# single-level labels for display
+formatted_bs.index = [
+    "Cash", "Inventory", "Current Assets",
+    "Unearned Revenue", "Liabilities",
+    "Paid‑in Capital", "Retained Earnings", "Total Equity", "Total L&E"
+]
+
+# section headers
+hdr_assets = pd.DataFrame([[""] * formatted_bs.shape[1]], index=["Current Assets:"], columns=formatted_bs.columns)
+hdr_liabs  = pd.DataFrame([[""] * formatted_bs.shape[1]], index=["Current Liabilities:"], columns=formatted_bs.columns)
+hdr_equity = pd.DataFrame([[""] * formatted_bs.shape[1]], index=["Shareholders' Equity:"], columns=formatted_bs.columns)
+
+# group rows
+asset_rows  = formatted_bs.loc[["Cash", "Inventory", "Current Assets"]]
+liab_rows   = formatted_bs.loc[["Unearned Revenue", "Liabilities"]]
+equity_pre  = formatted_bs.loc[["Paid‑in Capital", "Retained Earnings", "Total Equity"]]
+equity_post = formatted_bs.loc[["Total L&E"]]
+
+# blank row template
+blank = pd.DataFrame([[""] * formatted_bs.shape[1]], index=[""], columns=formatted_bs.columns)
+
+# concatenate with blanks after specified sections
+new_bs = pd.concat([
+    hdr_assets,
+    asset_rows,
+    blank,                 # after Current Assets
+    hdr_liabs,
+    liab_rows,
+    blank,                 # after Liabilities
+    hdr_equity,
+    equity_pre,
+    blank,                 # after Total Equity
+    equity_post
+])
 
 st.subheader("Balance Sheet (3‑Month View)")
-st.dataframe(formatted_bs.style.format(fmt_flt))
+st.dataframe(new_bs.style.format(fmt_flt))
