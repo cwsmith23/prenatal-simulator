@@ -264,62 +264,56 @@ st.dataframe(annual_is_df.style.format(fmt_flt, subset=annual_is_df.columns))
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt, subset=cf_df.columns))
 
-# ─── 3‑Month Balance Sheet View (CFI style) ─────────────────────────────────
+# ─── 3‑Month Balance Sheet View (CFI template) ────────────────────────────────
 
-# Pick your 3‑month window
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month Balance Sheet",
     min_value=1,
     max_value=params["simulation_months"] - 2,
-    value=1
+    value=1,
 )
 bs_slice = bs_df.loc[start_month : start_month + 2]
 
-# Transpose months → columns
-formatted_bs = bs_slice.T.copy()
-formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
+# Define the rows in the exact order & labels you want:
+row_defs = [
+    ("Current assets:",            None),
+    ("  Cash",                     "Cash"),
+    ("  Inventory",                "Inventory"),
+    ("Total current assets",       "Total Current Assets"),
+    ("Current liabilities:",       None),
+    ("  Unearned Revenue",         "Unearned Revenue"),
+    ("Total current liabilities",  "Total Liabilities"),
+    ("Shareholders’ equity:",      None),
+    ("  Paid‑in Capital Injection","Paid-in Capital"),
+    ("  Retained Earnings",        "Retained Earnings"),
+    ("Total shareholders’ equity", "Total Equity"),
+    ("Total Liabilities & Shareholders’ Equity", "Total Liabilities & Equity"),
+]
 
-# MultiIndex rows to group sections
-formatted_bs.index = pd.MultiIndex.from_tuples([
-    ("Current assets",        "Cash"),
-    ("Current assets",        "Inventory"),
-    ("",                      "Total current assets"),
-    ("Current liabilities",   "Unearned Revenue"),
-    ("",                      "Total current liabilities"),
-    ("Shareholders’ equity",  "Paid‑in Capital"),
-    ("Shareholders’ equity",  "Retained Earnings"),
-    ("",                      "Total shareholders’ equity"),
-    ("",                      "Total Liabilities & Equity"),
-], names=["", ""])
+# Build a human‑readable DataFrame
+data = []
+for label, col in row_defs:
+    if col is None:
+        # blank line
+        data.append([float("nan")] * len(bs_slice))
+    else:
+        data.append(bs_slice[col].tolist())
 
-# Custom header to mimic CFI style
-st.markdown(
-    """
-    <div style="text-align:center; line-height:1.1;">
-      <strong style="font-size:24px;">[Company Name]</strong><br>
-      <span style="font-size:20px;">Balance Sheet</span><br>
-      <em>USD ($)</em>
-    </div>
-    """,
-    unsafe_allow_html=True,
+template = pd.DataFrame(
+    data,
+    index=[label for label, _ in row_defs],
+    columns=[f"Month {m}" for m in bs_slice.index]
 )
 
-# Apply styling: two‑decimals, borders under each subtotal, bold section headers
+# Style it: commas, two‑decimals, bold section headers
+def highlight_header(s):
+    return ["font-weight: bold" if s.name.endswith(":") else "" for _ in s]
+
 styler = (
-    formatted_bs
-      .style
-      .format("{:,.2f}")
-      .set_table_styles([
-          {"selector": "tbody tr:nth-child(3)", "props": [("border-bottom", "2px solid #000")]},
-          {"selector": "tbody tr:nth-child(5)", "props": [("border-bottom", "2px solid #000")]},
-          {"selector": "tbody tr:nth-child(8)", "props": [("border-bottom", "2px solid #000")]}
-      ], overwrite=False)
-      .apply(lambda df: [
-          "font-weight: bold" if lvl1 in ["Current assets","Current liabilities","Shareholders’ equity"] else ""
-          for lvl0,lvl1 in df.index
-      ], axis=0)
+    template.style
+            .format("{:,.2f}")
+            .apply(highlight_header, axis=1)
 )
 
 st.subheader("Balance Sheet (3‑Month View)")
 st.dataframe(styler, height=400)
-
