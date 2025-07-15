@@ -240,7 +240,7 @@ def build_financials(df, p):
 
     return bs, annual_is, cf
 
-# ─── Run & Display ─────────────────────────────────────────────────────────────
+# ─── Run & Display ────────────────────────────────────────────────────────────
 sim_df        = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
@@ -273,11 +273,12 @@ bs_slice   = bs_df.loc[start_month:start_month+2]
 formatted_bs = bs_slice.T.copy()
 formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
 
-# remove axis names
+# remove axis names before styling
 formatted_bs.columns.name = None
 formatted_bs.index.names = [None, None]
 
 # define MultiIndex rows
+
 formatted_bs.index = pd.MultiIndex.from_tuples([
     ("Current assets",        "Cash"),
     ("Current assets",        "Inventory"),
@@ -290,7 +291,39 @@ formatted_bs.index = pd.MultiIndex.from_tuples([
     ("",                      "Total Liabilities & Shareholders’ Equity"),
 ], names=["", ""])
 
-# custom header
+def style_balance_sheet(df: pd.DataFrame) -> pd.io.formats.style.Styler:
+    """Return a styled balance sheet table."""
+    df.columns.name = None
+    df.index.names = [None] * df.index.nlevels
+
+    subtotal_rows = [
+        i + 1
+        for i, (_, lbl) in enumerate(df.index)
+        if lbl.lower().startswith("total")
+    ]
+    borders = [
+        {"selector": f"tbody tr:nth-child({i})", "props": [("border-bottom", "2px solid #000")]}
+        for i in subtotal_rows
+    ]
+
+    return (
+        df.style
+          .format("{:,.2f}")
+          .set_table_styles(borders, overwrite=False)
+          .apply(
+              lambda d: [
+                  "font-weight: bold" if lvl0 in [
+                      "Current assets",
+                      "Current liabilities",
+                      "Shareholders’ equity",
+                  ] else ""
+                  for lvl0, _ in d.index
+              ],
+              axis=0,
+          )
+    )
+
+# table header
 st.markdown(
     """
     <div style="text-align:center; line-height:1.1;">
@@ -302,26 +335,5 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# dynamic subtotal borders
-subtotal_idxs = [
-    i+1
-    for i, (_, lbl) in enumerate(formatted_bs.index)
-    if lbl.lower().startswith("total")
-]
-border_styles = [
-    {"selector": f"tbody tr:nth-child({idx})", "props": [("border-bottom", "2px solid #000")]}
-    for idx in subtotal_idxs
-]
-
-styler = (
-    formatted_bs.style
-      .format("{:,.2f}")
-      .set_table_styles(border_styles, overwrite=False)
-      .apply(lambda df: [
-          "font-weight: bold" if lvl0 in ["Current assets","Current liabilities","Shareholders’ equity"] else ""
-          for lvl0, _ in df.index
-      ], axis=0)
-)
-
 st.subheader("Balance Sheet (3‑Month View)")
-st.dataframe(styler, height=400)
+st.dataframe(style_balance_sheet(formatted_bs), height=400)
