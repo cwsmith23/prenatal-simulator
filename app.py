@@ -264,27 +264,62 @@ st.dataframe(annual_is_df.style.format(fmt_flt, subset=annual_is_df.columns))
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt, subset=cf_df.columns))
 
-# ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View (CFI style) ─────────────────────────────────
+
+# Pick your 3‑month window
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month Balance Sheet",
     min_value=1,
-    max_value=params["simulation_months"]-2,
+    max_value=params["simulation_months"] - 2,
     value=1
 )
-bs_slice    = bs_df.loc[start_month:start_month+2]
-formatted_bs= bs_slice.T.copy()
-formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
+bs_slice = bs_df.loc[start_month : start_month + 2]
+
+# Transpose months → columns
+formatted_bs = bs_slice.T.copy()
+formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
+
+# MultiIndex rows to group sections
 formatted_bs.index = pd.MultiIndex.from_tuples([
-    ("Assets",               "Cash Balance"),
-    ("Assets",               "Inventory Value"),
-    ("Assets",               "Total Current Assets"),
-    ("Liabilities",          "Unearned Revenue"),
-    ("Liabilities",          "Total Liabilities"),
-    ("Equity",               "Paid‑in Capital"),
-    ("Equity",               "Retained Earnings"),
-    ("Equity",               "Total Equity"),
-    ("",                     "Total L&E"),
-], names=["",""])
+    ("Current assets",        "Cash"),
+    ("Current assets",        "Inventory"),
+    ("",                      "Total current assets"),
+    ("Current liabilities",   "Unearned Revenue"),
+    ("",                      "Total current liabilities"),
+    ("Shareholders’ equity",  "Paid‑in Capital"),
+    ("Shareholders’ equity",  "Retained Earnings"),
+    ("",                      "Total shareholders’ equity"),
+    ("",                      "Total Liabilities & Equity"),
+], names=["", ""])
+
+# Custom header to mimic CFI style
+st.markdown(
+    """
+    <div style="text-align:center; line-height:1.1;">
+      <strong style="font-size:24px;">[Company Name]</strong><br>
+      <span style="font-size:20px;">Balance Sheet</span><br>
+      <em>USD ($)</em>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Apply styling: two‑decimals, borders under each subtotal, bold section headers
+styler = (
+    formatted_bs
+      .style
+      .format("{:,.2f}")
+      .set_table_styles([
+          {"selector": "tbody tr:nth-child(3)", "props": [("border-bottom", "2px solid #000")]},
+          {"selector": "tbody tr:nth-child(5)", "props": [("border-bottom", "2px solid #000")]},
+          {"selector": "tbody tr:nth-child(8)", "props": [("border-bottom", "2px solid #000")]}
+      ], overwrite=False)
+      .apply(lambda df: [
+          "font-weight: bold" if lvl1 in ["Current assets","Current liabilities","Shareholders’ equity"] else ""
+          for lvl0,lvl1 in df.index
+      ], axis=0)
+)
 
 st.subheader("Balance Sheet (3‑Month View)")
-st.dataframe(formatted_bs.style.format(fmt_flt))
+st.dataframe(styler, height=400)
+
