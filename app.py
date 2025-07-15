@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import math
 
-# ─── Sidebar Inputs ─────────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ────────────────────────────────────────────────────────────
 st.title("BareBump Cash‑Flow Simulator & Financials")
 st.sidebar.header("Parameters")
 
@@ -55,6 +55,7 @@ params = {
 }
 
 def run_simulation(p):
+    months = p["simulation_months"]
     total_pkgs = sum(p["initial_inventory"].values())
     cost_per_pkg = p["initial_inventory_cost"] / total_pkgs
 
@@ -76,13 +77,13 @@ def run_simulation(p):
             cnt = int(round(p["initial_subscribers"] * pct))
             if cnt > 0:
                 monthly_cohorts.append({
-                    "start": 1, "count": cnt,
-                    "stage": 1, "s1_limit": lim, "s1_shipped": 0
+                    "start": 1, "count": cnt, "stage": 1,
+                    "s1_limit": lim, "s1_shipped": 0
                 })
 
     records = []
-    for m in range(1, p["simulation_months"] + 1):
-        # new subs & prepaid each month
+    for m in range(1, months + 1):
+        # New cohorts
         if m == 1:
             new_mon = sum(c["count"] for c in monthly_cohorts)
             new_pre = p["initial_prepaid"]
@@ -91,23 +92,22 @@ def run_simulation(p):
             tot = alive * p["subscriber_growth_rate"]
             new_pre = int(round(tot * p["percent_prepaid"]))
             new_mon = int(round(tot - new_pre))
-            # allocate new cohorts
             for stg, spct in p["start_stage_dist"].items():
                 for lim, pct in p["ship1_dist"].items():
                     cnt = int(round(new_mon * spct * pct))
                     if cnt > 0:
                         monthly_cohorts.append({
-                            "start": m, "count": cnt,
-                            "stage": stg, "s1_limit": lim, "s1_shipped": 0
+                            "start": m, "count": cnt, "stage": stg,
+                            "s1_limit": lim, "s1_shipped": 0
                         })
-            if new_pre > 0:
-                cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
-                prepaid_cohorts.append({
-                    "start": m, "count": new_pre, "stage": 1,
-                    "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
-                })
+        if new_pre > 0:
+            cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+            prepaid_cohorts.append({
+                "start": m, "count": new_pre, "stage": 1,
+                "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+            })
 
-        # arrivals & costs
+        # Inventory arrivals & costs
         inv_cost = 0
         for arr in [o for o in pending if o[0] == m]:
             _, s, qty, cost = arr
@@ -115,7 +115,7 @@ def run_simulation(p):
             inv_cost += cost
         pending = [o for o in pending if o[0] > m]
 
-        # shipments
+        # Shipments
         ship_mon = {1:0,2:0,3:0}
         ship_pre = {1:0,2:0,3:0}
         for c in monthly_cohorts:
@@ -137,7 +137,7 @@ def run_simulation(p):
                 s = min(1 + (age-1)//3, 3)
                 ship_pre[s] += c["count"]
 
-        # reorder logic
+        # Reorder logic
         exp = {s: ship_mon[s] + ship_pre[s] for s in (1,2,3)}
         reorder_cost = 0
         for s in (1,2,3):
@@ -148,7 +148,7 @@ def run_simulation(p):
                 pending.append((m + p["lead_time"], s, p["reorder_qty"], p["reorder_cost"]))
                 reorder_cost += p["reorder_cost"]
 
-        # revenue & COGS
+        # Revenue & COGS
         rev_mon = sum(ship_mon.values()) * p["monthly_price"]
         rev_pre = 0
         for c in prepaid_cohorts:
@@ -163,13 +163,12 @@ def run_simulation(p):
         total_rev  = rev_mon + rev_pre
         total_cogs = cogs_mon + cogs_pre
 
-        cac = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
-        ship_cost = sum(exp.values()) * p["shipping_cost_pkg"]
-        gross     = total_rev - total_cogs
-        op_inc    = gross - cac
-        net_income= op_inc - ship_cost
+        cac        = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
+        ship_cost  = sum(exp.values()) * p["shipping_cost_pkg"]
+        op_inc     = total_rev - total_cogs - cac
+        net_income = op_inc - ship_cost
 
-        # cash flow
+        # Cash flow
         net = rev_mon - cac - ship_cost - inv_cost - reorder_cost
         cash += net
 
@@ -188,12 +187,10 @@ def run_simulation(p):
             "Reorder Cost": reorder_cost,
             "Monthly Revenue": round(rev_mon,2),
             "Prepaid Rev Recognized": round(rev_pre,2),
-            "Total COGS": round(total_cogs,2),
             "Total Revenue": round(total_rev,2),
-            "Gross Profit": round(gross,2),
+            "Total COGS": round(total_cogs,2),
+            "Gross Profit": round(total_rev - total_cogs,2),
             "Operating Income": round(op_inc,2),
-            "CAC": round(cac,2),
-            "Shipping Exp": round(ship_cost,2),
             "Net Income": round(net_income,2),
             "Net Cash Flow": round(net,2),
             "Cash Balance": round(cash,2),
@@ -202,22 +199,22 @@ def run_simulation(p):
 
     return pd.DataFrame(records).set_index("Month")
 
-
 def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
-    bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
-    bs["Inventory Value"]     = df[["Inv S1","Inv S2","Inv S3"]].sum(axis=1) * p["initial_inventory_cost"]/total_pkgs
-    bs["Unearned Revenue"]    = df["Deferred Rev Balance"]
-    bs["Total Current Assets"]= bs["Cash Balance"] + bs["Inventory Value"]
-    bs["Total Liabilities"]   = bs["Unearned Revenue"]
-    bs["Paid‑in Capital"]     = p["initial_inventory_cost"]
-    bs["Retained Earnings"]   = df["Net Income"].cumsum()
-    bs["Total Equity"]        = bs["Paid‑in Capital"] + bs["Retained Earnings"]
-    bs["Total L&E"]           = bs["Total Liabilities"] + bs["Total Equity"]
 
-    # reorder columns: Assets → Liabilities → Equity
+    # Balance Sheet end-of-month
+    bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
+    bs["Inventory"]         = df[["Inv S1","Inv S2","Inv S3"]].sum(axis=1) * p["initial_inventory_cost"]/total_pkgs
+    bs["Unearned Revenue"]  = df["Deferred Rev Balance"]
+    bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory"]
+    bs["Total Liabilities"] = bs["Unearned Revenue"]
+    bs["Paid‑in Capital"]   = p["initial_inventory_cost"]
+    bs["Retained Earnings"] = df["Net Income"].cumsum()
+    bs["Total Equity"]      = bs["Paid‑in Capital"] + bs["Retained Earnings"]
+    bs["Total L&E"]         = bs["Total Liabilities"] + bs["Total Equity"]
+
     bs = bs[[
-        "Cash Balance","Inventory Value","Total Current Assets",
+        "Cash Balance","Inventory","Total Current Assets",
         "Unearned Revenue","Total Liabilities",
         "Paid‑in Capital","Retained Earnings","Total Equity","Total L&E"
     ]]
@@ -227,8 +224,8 @@ def build_financials(df, p):
         "Revenue": df["Total Revenue"],
         "COGS": df["Total COGS"],
         "Gross Profit": df["Gross Profit"],
-        "Op Expenses": df["CAC"]+df["Shipping Exp"],
-        "Op Income": df["Operating Income"]-df["Shipping Exp"],
+        "Operating Expenses": df["CAC"]+df["Shipping Exp"],
+        "Operating Income": df["Operating Income"]-df["Shipping Exp"],
         "Net Income": df["Net Income"],
     })
     annual_is = is_df.head(12).sum().to_frame().T
@@ -237,15 +234,15 @@ def build_financials(df, p):
     # Monthly Cash Flow Statement
     cf = pd.DataFrame({
         "Operating Cash Flow": df["Net Cash Flow"],
-        "Financing Cash Flow": df["Reorder Cost"].mul(-1)
+        "Financing Cash Flow": -df["Reorder Cost"]
     })
     cf.iloc[0, cf.columns.get_loc("Financing Cash Flow")] -= p["initial_inventory_cost"]
 
     return bs, annual_is, cf
 
-# ─── Run & Display ──────────────────────────────────────────────────────────────
-sim_df      = run_simulation(params)
-bs_df,annual_is_df,cf_df = build_financials(sim_df, params)
+# ─── Run & Display ─────────────────────────────────────────────────────────────
+sim_df        = run_simulation(params)
+bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
@@ -253,7 +250,7 @@ fmt_flt = "{:,.2f}"
 st.subheader("Monthly Simulation Details")
 st.dataframe(
     sim_df.style.format(fmt_int, subset=sim_df.select_dtypes("int").columns)
-                  .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
+                 .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
 )
 
 st.subheader("Balance Sheet (End of Month)")
@@ -265,27 +262,66 @@ st.dataframe(annual_is_df.style.format(fmt_flt, subset=annual_is_df.columns))
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt, subset=cf_df.columns))
 
-# ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View (CFI style) ──────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month Balance Sheet",
     min_value=1,
     max_value=params["simulation_months"]-2,
     value=1
 )
-bs_slice    = bs_df.loc[start_month:start_month+2]
-formatted_bs= bs_slice.T.copy()
-formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
+bs_slice   = bs_df.loc[start_month:start_month+2]
+formatted_bs = bs_slice.T.copy()
+formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
+
+# remove axis names
+formatted_bs.columns.name = None
+formatted_bs.index.names = [None, None]
+
+# define MultiIndex rows
 formatted_bs.index = pd.MultiIndex.from_tuples([
-    ("Assets",               "Cash Balance"),
-    ("Assets",               "Inventory Value"),
-    ("Assets",               "Total Current Assets"),
-    ("Liabilities",          "Unearned Revenue"),
-    ("Liabilities",          "Total Liabilities"),
-    ("Equity",               "Paid‑in Capital"),
-    ("Equity",               "Retained Earnings"),
-    ("Equity",               "Total Equity"),
-    ("",                     "Total L&E"),
-], names=["",""])
+    ("Current assets",        "Cash"),
+    ("Current assets",        "Inventory"),
+    ("",                      "Total current assets"),
+    ("Current liabilities",   "Unearned Revenue"),
+    ("",                      "Total current liabilities"),
+    ("Shareholders’ equity",  "Paid‑in Capital Injection"),
+    ("Shareholders’ equity",  "Retained Earnings"),
+    ("",                      "Total shareholders’ equity"),
+    ("",                      "Total Liabilities & Shareholders’ Equity"),
+], names=["", ""])
+
+# custom header
+st.markdown(
+    """
+    <div style="text-align:center; line-height:1.1;">
+      <strong style="font-size:24px;">BareBump, Inc.</strong><br>
+      <span style="font-size:20px;">Balance Sheet</span><br>
+      <em>USD ($)</em>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# dynamic subtotal borders
+subtotal_idxs = [
+    i+1
+    for i, (_, lbl) in enumerate(formatted_bs.index)
+    if lbl.lower().startswith("total")
+]
+border_styles = [
+    {"selector": f"tbody tr:nth-child({idx})", "props": [("border-bottom", "2px solid #000")]}
+    for idx in subtotal_idxs
+]
+
+styler = (
+    formatted_bs.style
+      .format("{:,.2f}")
+      .set_table_styles(border_styles, overwrite=False)
+      .apply(lambda df: [
+          "font-weight: bold" if lvl0 in ["Current assets","Current liabilities","Shareholders’ equity"] else ""
+          for lvl0, _ in df.index
+      ], axis=0)
+)
 
 st.subheader("Balance Sheet (3‑Month View)")
-st.dataframe(formatted_bs.style.format(fmt_flt))
+st.dataframe(styler, height=400)
