@@ -94,7 +94,6 @@ def run_simulation(p):
             tot = alive * p["subscriber_growth_rate"]
             new_pre = int(round(tot * p["percent_prepaid"]))
             new_mon = int(round(tot - new_pre))
-
             # allocate new monthly cohorts
             for stg, spct in p["start_stage_dist"].items():
                 for lim, pct in p["ship1_dist"].items():
@@ -104,7 +103,6 @@ def run_simulation(p):
                             "start": m, "count": cnt,
                             "stage": stg, "s1_limit": lim, "s1_shipped": 0
                         })
-
             # deferred cash for new prepaid
             if new_pre > 0:
                 cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
@@ -159,8 +157,8 @@ def run_simulation(p):
 
         # Costs & revenues
         ship_cost = sum(exp.values()) * p["shipping_cost_pkg"]
-        rev_mon = sum(ship_mon.values()) * p["monthly_price"]
-        rev_pre = 0
+        rev_mon   = sum(ship_mon.values()) * p["monthly_price"]
+        rev_pre   = 0
         for c in prepaid_cohorts:
             age = m - c["start"] + 1
             if 1 <= age <= 9:
@@ -168,14 +166,14 @@ def run_simulation(p):
                 rev_pre += slice_rev
                 c["deferred"] -= slice_rev
 
-        cogs_mon    = sum(ship_mon.values()) * cost_per_pkg
-        cogs_pre    = sum(ship_pre.values()) * cost_per_pkg
-        total_rev   = rev_mon + rev_pre
-        total_cogs  = cogs_mon + cogs_pre
-        cac         = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
-        gross       = total_rev - total_cogs
-        op_inc      = gross - cac
-        net_income  = op_inc - ship_cost
+        cogs_mon   = sum(ship_mon.values()) * cost_per_pkg
+        cogs_pre   = sum(ship_pre.values()) * cost_per_pkg
+        total_rev  = rev_mon + rev_pre
+        total_cogs = cogs_mon + cogs_pre
+        cac        = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
+        gross      = total_rev - total_cogs
+        op_inc     = gross - cac
+        net_income = op_inc - ship_cost
 
         # include reorder_cost here
         net = rev_mon - cac - ship_cost - inv_cost - reorder_cost
@@ -218,35 +216,42 @@ def run_simulation(p):
 
     return pd.DataFrame(records).set_index("Month")
 
+
 def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
-    bs = pd.DataFrame({"Cash": df["Cash Balance"]})
-    bs["Inventory"]      = df[["Inv S1","Inv S2","Inv S3"]].sum(axis=1) * p["initial_inventory_cost"]/total_pkgs
-    bs["Deferred Rev"]   = df["Deferred Rev Bal"]
-    bs["Total Curr Assets"] = bs["Cash"] + bs["Inventory"]
-    bs["Total Liabilities"]= bs["Deferred Rev"]
-    bs["Paid-in Capital"]= p["initial_inventory_cost"]
-    bs["Retained Earnings"]= df["Net Income"].cumsum()
-    bs["Total Equity"]   = bs["Paid-in Capital"] + bs["Retained Earnings"]
-    bs["Total L+E"]      = bs["Total Liabilities"] + bs["Total Equity"]
 
+    # Balance Sheet
+    bs = pd.DataFrame({"Cash": df["Cash Balance"]})
+    bs["Inventory"]         = df[["Inv S1","Inv S2","Inv S3"]].sum(axis=1) * p["initial_inventory_cost"] / total_pkgs
+    bs["Deferred Rev"]      = df["Deferred Rev Bal"]
+    bs["Total Curr Assets"] = bs["Cash"] + bs["Inventory"]
+    bs["Total Liabilities"] = bs["Deferred Rev"]
+    bs["Paid-in Capital"]   = p["initial_inventory_cost"]
+    bs["Retained Earnings"] = df["Net Income"].cumsum()
+    bs["Total Equity"]      = bs["Paid-in Capital"] + bs["Retained Earnings"]
+    bs["Total L+E"]         = bs["Total Liabilities"] + bs["Total Equity"]
+
+    # Income Statement
     is_df = pd.DataFrame({
-        "Revenue": df["Total Revenue"],
-        "COGS": df["Total COGS"],
+        "Revenue":      df["Total Revenue"],
+        "COGS":         df["Total COGS"],
         "Gross Profit": df["Gross Profit"],
-        "Op Expenses": df["CAC"] + df["Shipping Exp"],
-        "Op Income": df["Operating Income"] - df["Shipping Exp"],
-        "Net Income": df["Net Income"],
+        "Op Expenses":  df["CAC"] + df["Shipping Exp"],
+        "Op Income":    df["Operating Income"] - df["Shipping Exp"],
+        "Net Income":   df["Net Income"],
     })
 
-    # include initial cap and reorder outflows
-    fin_flows = [-p["initial_inventory_cost"]] + df["Reorder Cost"].mul(-1).tolist()
+    # Cash Flow Statement
+    fin_flows = df["Reorder Cost"].mul(-1).copy()
+    fin_flows.iloc[0] -= p["initial_inventory_cost"]
+
     cf = pd.DataFrame({
         "Op Cash Flow": df["Net Cash Flow"],
         "Fin Cash Flow": fin_flows,
     })
 
     return bs, is_df, cf
+
 
 # ─── Run & Display ─────────────────────────────────────────────────────────────
 sim_df  = run_simulation(params)
