@@ -305,17 +305,17 @@ fmt3.index = [
 rows = []
 # Current Assets
 rows.append(("Current Assets:", ["", "", ""]))
-for lbl in ["Cash","Inventory","Current Assets"]:
+for lbl in ["   Cash","   Inventory","Current Assets"]:
     rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 # Current Liabilities
 rows.append(("Current Liabilities:", ["", "", ""]))
-for lbl in ["Unearned Revenue","Liabilities"]:
+for lbl in ["   Unearned Revenue","Liabilities"]:
     rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 # Equity
 rows.append(("Shareholders' Equity:", ["", "", ""]))
-for lbl in ["Paid‑in Capital","Retained Earnings","Total Equity"]:
+for lbl in ["   Paid‑in Capital","   Retained Earnings","Total Equity"]:
     rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 # Total L&E
