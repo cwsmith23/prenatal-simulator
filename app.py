@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import math
@@ -202,7 +201,6 @@ def run_simulation(p):
         })
 
     return pd.DataFrame(records).set_index("Month")
-
 
 def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
