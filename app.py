@@ -315,9 +315,16 @@ new_bs = pd.concat([
     blank,        # after Total Equity
     equity_post
 ])
-new_bs.index = ["" if str(x) == "None" else x for x in new_bs.index]
+# — Convert the index into a real column and drop the DataFrame index —
+display_df = new_bs.reset_index()
+display_df.columns = ["", *display_df.columns[1:]]  # first column is your labels
+
+# — Now show without an index, so blank rows render as totally empty —
 st.subheader("Balance Sheet (3‑Month View)")
 st.dataframe(
-    new_bs.style
-          .format(fmt_flt, na_rep="")
+    display_df,
+    use_container_width=True,
+    # hide the auto‐generated index
+    hide_index=True
 )
+
