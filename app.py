@@ -69,7 +69,7 @@ def run_simulation(p):
         cash += p["initial_prepaid"] * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
         prepaid_cohorts.append({
             "start": 1, "count": p["initial_prepaid"], "stage": 1,
-            "deferred": p["initial_prepaid"] * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+            "deferred": p["initial_prepaid"] * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"]),
         })
     if p["initial_subscribers"] > 0:
         for lim, pct in p["ship1_dist"].items():
@@ -100,12 +100,12 @@ def run_simulation(p):
                             "start": m, "count": cnt,
                             "stage": stg, "s1_limit": lim, "s1_shipped": 0
                         })
-            if new_pre > 0:
-                cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
-                prepaid_cohorts.append({
-                    "start": m, "count": new_pre, "stage": 1,
-                    "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
-                })
+        if new_pre > 0:
+            cash += new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
+            prepaid_cohorts.append({
+                "start": m, "count": new_pre, "stage": 1,
+                "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"]),
+            })
 
         # arrivals & costs
         inv_cost = 0
@@ -189,6 +189,9 @@ def run_simulation(p):
             "Monthly Revenue": round(rev_mon,2),
             "Prepaid Rev Recognized": round(rev_pre,2),
             "Total COGS": round(total_cogs,2),
+            "Total Revenue": round(total_rev,2),
+            "Gross Profit": round(gross,2),
+            "Operating Income": round(op_inc,2),
             "CAC": round(cac,2),
             "Shipping Exp": round(ship_cost,2),
             "Net Income": round(net_income,2),
@@ -240,7 +243,7 @@ def build_financials(df, p):
 
     return bs, annual_is, cf
 
-# ─── Run & Display ─────────────────────────────────────────────────────────────
+# ─── Run & Display ────────────────────────────────────────────────────────────
 sim_df      = run_simulation(params)
 bs_df,annual_is_df,cf_df = build_financials(sim_df, params)
 
