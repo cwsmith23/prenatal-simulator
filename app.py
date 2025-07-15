@@ -55,7 +55,7 @@ params = {
     "simulation_months":      months
 }
 
-# ─── Simulation Function ────────────────────────────────────────────────────────
+# ─── Simulation ─────────────────────────────────────────────────────────────────
 def run_simulation(p):
     total_pkgs   = sum(p["initial_inventory"].values())
     cost_per_pkg = p["initial_inventory_cost"] / total_pkgs
@@ -65,6 +65,7 @@ def run_simulation(p):
     monthly_cohorts = []
     prepaid_cohorts = []
 
+    # Month 1 seeds & deferred
     if p["initial_prepaid"] > 0:
         cash += p["initial_prepaid"] * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
         prepaid_cohorts.append({
@@ -100,7 +101,7 @@ def run_simulation(p):
                     "deferred": new_pre * p["monthly_price"] * 9 * (1 - p["prepaid_discount_rate"])
                 })
 
-        # Arrivals
+        # Arrivals & inventory cost
         inv_cost = 0
         for arr in [x for x in pending if x[0] == m]:
             _, s, qty, cost = arr
@@ -130,7 +131,7 @@ def run_simulation(p):
                 s = min(1 + (age - 1) // 3, 3)
                 ship_pre[s] += c["count"]
 
-        # Reorder
+        # Reorder logic
         exp = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
         reorder_cost = 0
         for s in (1, 2, 3):
@@ -193,76 +194,91 @@ def run_simulation(p):
 def build_financials(df, p):
     total_pkgs = sum(p["initial_inventory"].values())
     bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
-    bs["Inventory Value"] = (
-        df[["Inv S1", "Inv S2", "Inv S3"]].sum(axis=1)
-        * p["initial_inventory_cost"]
-        / total_pkgs
-    )
-    bs["Unearned Revenue"] = df["Deferred Rev Balance"]
+    bs["Inventory Value"]      = df[["Inv S1", "Inv S2", "Inv S3"]].sum(axis=1) * p["initial_inventory_cost"] / total_pkgs
+    bs["Unearned Revenue"]     = df["Deferred Rev Balance"]
     bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory Value"]
-    bs["Total Liabilities"] = bs["Unearned Revenue"]
-    bs["Paid‑in Capital"] = p["initial_inventory_cost"]
-    bs["Retained Earnings"] = df["Net Income"].cumsum()
-    bs["Total Equity"] = bs["Paid‑in Capital"] + bs["Retained Earnings"]
-    bs["Total L&E"] = bs["Total Liabilities"] + bs["Total Equity"]
-    return bs
+    bs["Total Liabilities"]    = bs["Unearned Revenue"]
+    bs["Paid‑in Capital"]      = p["initial_inventory_cost"]
+    bs["Retained Earnings"]    = df["Net Income"].cumsum()
+    bs["Total Equity"]         = bs["Paid‑in Capital"] + bs["Retained Earnings"]
+    bs["Total L&E"]            = bs["Total Liabilities"] + bs["Total Equity"]
+
+    # Annual Income Statement
+    is_df = pd.DataFrame({
+        "Revenue":      df["Total Revenue"],
+        "COGS":         df["Total COGS"],
+        "Gross Profit": df["Gross Profit"],
+        "Op Expenses":  df["CAC"] + df["Shipping Exp"],
+        "Op Income":    df["Operating Income"] - df["Shipping Exp"],
+        "Net Income":   df["Net Income"],
+    })
+    annual_is = is_df.head(12).sum().to_frame().T
+    annual_is.index = ["Year 1"]
+
+    # Monthly Cash Flow Statement
+    cf = pd.DataFrame({
+        "Operating Cash Flow": df["Net Cash Flow"],
+        "Financing Cash Flow": df["Reorder Cost"].mul(-1)
+    })
+    cf.iloc[0, cf.columns.get_loc("Financing Cash Flow")] -= p["initial_inventory_cost"]
+
+    return bs, annual_is, cf
 
 
 # ─── Run & Display Standard Reports ─────────────────────────────────────────────
+sim_df, bs_df, annual_is_df, cf_df = None, None, None, None
 sim_df = run_simulation(params)
-bs_df = build_financials(sim_df, params)
+bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
 
 st.subheader("Monthly Simulation Details")
 st.dataframe(
-    sim_df.style.format(fmt_int, subset=sim_df.select_dtypes("int").columns)
+    sim_df.style
+          .format(fmt_int, subset=sim_df.select_dtypes("int").columns)
           .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
 )
 
 st.subheader("Balance Sheet (End of Month)")
 st.dataframe(bs_df.style.format(fmt_flt))
 
+st.subheader("Annual Income Statement (Year 1)")
+st.dataframe(annual_is_df.style.format(fmt_flt))
+
+st.subheader("Monthly Cash Flow Statement")
+st.dataframe(cf_df.style.format(fmt_flt))
+
+
 # ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
 start_month = st.sidebar.number_input(
-    "Start Month for 3‑Month Balance Sheet",
-    1, params["simulation_months"] - 2, 1
+    "Start Month for 3‑Month Balance Sheet", 1, params["simulation_months"] - 2, 1
 )
 slice_df = bs_df.loc[start_month : start_month + 2]
 fmt3 = slice_df.T.copy()
 fmt3.index = [
-    "Cash",
-    "Inventory",
-    "Current Assets",
-    "Unearned Revenue",
-    "Liabilities",
-    "Paid‑in Capital",
-    "Retained Earnings",
-    "Total Equity",
-    "Total L&E",
+    "Cash", "Inventory", "Current Assets",
+    "Unearned Revenue", "Liabilities",
+    "Paid‑in Capital", "Retained Earnings",
+    "Total Equity", "Total L&E",
 ]
 
 rows = []
-# Current Assets section
 rows.append(("Current Assets:", ["", "", ""]))
-for label in ["Cash", "Inventory", "Current Assets"]:
-    rows.append((label, [f"{v:,.2f}" for v in fmt3.loc[label]]))
+for lbl in ["Cash", "Inventory", "Current Assets"]:
+    rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 
-# Current Liabilities section
 rows.append(("Current Liabilities:", ["", "", ""]))
-for label in ["Unearned Revenue", "Liabilities"]:
-    rows.append((label, [f"{v:,.2f}" for v in fmt3.loc[label]]))
+for lbl in ["Unearned Revenue", "Liabilities"]:
+    rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 
-# Shareholders' Equity section
 rows.append(("Shareholders' Equity:", ["", "", ""]))
-for label in ["Paid‑in Capital", "Retained Earnings", "Total Equity"]:
-    rows.append((label, [f"{v:,.2f}" for v in fmt3.loc[label]]))
+for lbl in ["Paid‑in Capital", "Retained Earnings", "Total Equity"]:
+    rows.append((lbl, [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 
-# Total L&E
 rows.append(("Total L&E", [f"{v:,.2f}" for v in fmt3.loc["Total L&E"]]))
 
 cols = [f"Month {m}" for m in slice_df.index]
