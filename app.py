@@ -5,7 +5,7 @@ import math
 st.set_page_config(layout="wide")
 st.title("BareBump Cash‑Flow Simulator & Financials")
 
-# ─── Sidebar Inputs ──────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 1000, 250)
 init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 1000, 20)
@@ -266,7 +266,7 @@ def build_financials(df, p):
     return bs, annual_is, cf
 
 
-# ─── Run & Display Reports ───────────────────────────────────────────────────
+# ─── Run & Display Reports ────────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
@@ -289,17 +289,17 @@ st.dataframe(annual_is_df.style.format(fmt_flt))
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt))
 
-# ─── 3‑Month Balance Sheet View ─────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month View", 1, params["simulation_months"]-2, 1
 )
 slice_df = bs_df.loc[start_month:start_month+2]
 fmt3 = slice_df.T.copy()
 fmt3.index = [
-    "Cash", "Inventory", "Unearned Revenue",
-    "Current Assets", "Liabilities",
-    "Paid‑in Capital", "Retained Earnings",
-    "Total Equity", "Total L&E"
+    "Cash","Inventory","Current Assets",
+    "Unearned Revenue","Liabilities",
+    "Paid‑in Capital","Retained Earnings",
+    "Total Equity","Total L&E"
 ]
 
 rows = []
