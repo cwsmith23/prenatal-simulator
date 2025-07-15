@@ -315,7 +315,7 @@ new_bs = pd.concat([
     blank,        # after Total Equity
     equity_post
 ])
-
+new_bs.index = ["" if str(x) == "None" else x for x in new_bs.index]
 st.subheader("Balance Sheet (3‑Month View)")
 st.dataframe(
     new_bs.style
