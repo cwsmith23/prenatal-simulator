@@ -7,8 +7,8 @@ st.title("BareBump Cash‑Flow Simulator & Financials")
 
 # ─── Sidebar Inputs ─────────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
-init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 1000, 250)
-init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 1000, 20)
+init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 100000, 250)
+init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 100000, 20)
 growth        = st.sidebar.number_input("Growth Rate", 0.0, 1.0, 0.10, format="%.2f")
 pct_pre       = st.sidebar.number_input("% Prepaid", 0.0, 1.0, 0.20, format="%.2f")
 disc_pre      = st.sidebar.number_input("Prepaid Discount", 0.0, 1.0, 0.10, format="%.2f")
