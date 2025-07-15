@@ -267,48 +267,42 @@ st.dataframe(cf_df.style.format(fmt_flt, subset=cf_df.columns))
 # ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month Balance Sheet",
-    min_value=1,
-    max_value=params["simulation_months"]-2,
-    value=1
+    1, params["simulation_months"]-2, 1
 )
 bs_slice    = bs_df.loc[start_month:start_month+2]
 formatted_bs= bs_slice.T.copy()
 formatted_bs.columns = [f"Month {m}" for m in bs_slice.index]
 
-# single-level labels for display
+# Single‑level labels
 formatted_bs.index = [
     "Cash", "Inventory", "Current Assets",
     "Unearned Revenue", "Liabilities",
     "Paid‑in Capital", "Retained Earnings", "Total Equity", "Total L&E"
 ]
 
-# section headers
-hdr_assets = pd.DataFrame([[""] * formatted_bs.shape[1]], index=["Current Assets:"], columns=formatted_bs.columns)
-hdr_liabs  = pd.DataFrame([[""] * formatted_bs.shape[1]], index=["Current Liabilities:"], columns=formatted_bs.columns)
-hdr_equity = pd.DataFrame([[""] * formatted_bs.shape[1]], index=["Shareholders' Equity:"], columns=formatted_bs.columns)
+# Section headers
+hdr_assets = pd.DataFrame([[np.nan]*3], index=["Current Assets:"], columns=formatted_bs.columns)
+hdr_liabs  = pd.DataFrame([[np.nan]*3], index=["Current Liabilities:"], columns=formatted_bs.columns)
+hdr_equity = pd.DataFrame([[np.nan]*3], index=["Shareholders' Equity:"], columns=formatted_bs.columns)
 
-# group rows
+# Grouped rows
 asset_rows  = formatted_bs.loc[["Cash", "Inventory", "Current Assets"]]
 liab_rows   = formatted_bs.loc[["Unearned Revenue", "Liabilities"]]
 equity_pre  = formatted_bs.loc[["Paid‑in Capital", "Retained Earnings", "Total Equity"]]
 equity_post = formatted_bs.loc[["Total L&E"]]
 
-# blank row template
-blank = pd.DataFrame([[""] * formatted_bs.shape[1]], index=[""], columns=formatted_bs.columns)
+# Blank row template (NaN)
+blank = pd.DataFrame([[np.nan]*3], index=[""], columns=formatted_bs.columns)
 
-# concatenate with blanks after specified sections
 new_bs = pd.concat([
-    hdr_assets,
-    asset_rows,
-    blank,                 # after Current Assets
-    hdr_liabs,
-    liab_rows,
-    blank,                 # after Liabilities
-    hdr_equity,
-    equity_pre,
-    blank,                 # after Total Equity
+    hdr_assets, asset_rows, blank,  # blank after Current Assets
+    hdr_liabs, liab_rows, blank,    # blank after Liabilities
+    hdr_equity, equity_pre, blank,  # blank after Total Equity
     equity_post
 ])
 
 st.subheader("Balance Sheet (3‑Month View)")
-st.dataframe(new_bs.style.format(fmt_flt))
+st.dataframe(
+    new_bs.style
+          .format("{:,.2f}", na_rep="")
+)
