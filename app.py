@@ -278,8 +278,8 @@ def run_simulation(p):
 def build_financials(df, p):
     bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
     bs["Inventory Value"]      = df["Inventory Value"] + df["Transit Value"]
-    bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory Value"]
     bs["Unearned Revenue"]     = df["Deferred Rev Balance"]
+    bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory Value"]
     bs["Total Liabilities"]    = bs["Unearned Revenue"]
     bs["Paid‑in Capital"]      = p["initial_inventory_cost"]
     bs["Retained Earnings"]    = df["Net Income"].cumsum()
