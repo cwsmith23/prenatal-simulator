@@ -394,16 +394,8 @@ cols = [f"Month {m}" for m in slice_df.index]
 df3 = pd.DataFrame([vals for _, vals in rows], columns=cols)
 df3.insert(0, "", [lbl for lbl,_ in rows])
 
-clean_df3 = df3.reset_index(drop=True)
-
-st.subheader("Balance Sheet (3‑Month View)")
-
-# Convert to a Markdown table with no index
-table_md = df3.to_markdown(index=False)
-
-# Render it as Markdown (no gray index column, fully expanded)
-st.markdown(table_md)
-
+st.subheader("Balance Sheet (3‑Month View) Change Starting Month from Sidebar")
+st.dataframe(df3, hide_index=True, use_container_width=True)
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
     st.dataframe(
