@@ -2,6 +2,24 @@ import streamlit as st
 import pandas as pd
 import math
 
+def allocate_with_remainder(total, fractions):
+    """Allocate integer counts from a total based on fractional weights."""
+    allocations = {k: 0 for k in fractions}
+    remainders = []
+    for k, frac in fractions.items():
+        raw = total * frac
+        alloc = math.floor(raw)
+        allocations[k] = alloc
+        remainders.append((raw - alloc, k))
+
+    leftover = total - sum(allocations.values())
+    remainders.sort(reverse=True)
+    for i in range(leftover):
+        _, key = remainders[i]
+        allocations[key] += 1
+
+    return allocations
+
 st.set_page_config(layout="wide")
 st.title("BareBump Cash‑Flow Simulator & Financials")
 
@@ -79,8 +97,8 @@ def run_simulation(p):
 
     # Month 1: seed monthly cohorts into start stages
     s1_limit = next(iter(p["ship1_dist"].keys()))
-    for stg, spct in p["start_stage_dist"].items():
-        base_cnt = int(round(p["initial_subscribers"] * spct))
+       stage_alloc = allocate_with_remainder(p["initial_subscribers"], p["start_stage_dist"])
+    for stg, base_cnt in stage_alloc.items():
         if base_cnt == 0:
             continue
         if stg == 1:
@@ -89,8 +107,8 @@ def run_simulation(p):
             pseudo_start = 1 - (s1_limit + 1)
         else:
             pseudo_start = 1 - (s1_limit + 4)
-        for lim, pct in p["ship1_dist"].items():
-            cnt = int(round(base_cnt * pct))
+       ship_alloc = allocate_with_remainder(base_cnt, p["ship1_dist"])
+        for lim, cnt in ship_alloc.items():
             if cnt > 0:
                 monthly_cohorts.append({
                     "start":    pseudo_start,
@@ -107,12 +125,17 @@ def run_simulation(p):
         else:
             alive   = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
             tot     = alive * p["subscriber_growth_rate"]
-            new_pre = int(round(tot * p["percent_prepaid"]))
-            new_mon = int(round(tot - new_pre))
+               alloc   = allocate_with_remainder(
+                int(round(tot)),
+                {"pre": p["percent_prepaid"], "mon": 1 - p["percent_prepaid"]}
+            )
+            new_pre = alloc["pre"]
+            new_mon = alloc["mon"]
             # seed new monthly cohorts
-            for stg, spct in p["start_stage_dist"].items():
-                for lim, pct in p["ship1_dist"].items():
-                    cnt = int(round(new_mon * spct * pct))
+              stage_alloc = allocate_with_remainder(new_mon, p["start_stage_dist"])
+            for stg, base_cnt in stage_alloc.items():
+                ship_alloc = allocate_with_remainder(base_cnt, p["ship1_dist"])
+                for lim, cnt in ship_alloc.items():
                     if cnt > 0:
                         monthly_cohorts.append({
                             "start":    m,
