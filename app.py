@@ -21,10 +21,11 @@ def allocate_with_remainder(total, fractions):
 
     return allocations
 
+
 st.set_page_config(layout="wide")
 st.title("BareBump Cash‑Flow Simulator & Financials")
 
-# ─── Sidebar Inputs ────────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ─────────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 100000, 250)
 init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 100000, 20)
@@ -75,19 +76,21 @@ params = {
     "simulation_months":      months
 }
 
+
 def run_simulation(p):
     total_pkgs = sum(p["initial_inventory"].values())
     if total_pkgs == 0:
         raise ValueError("Initial inventory must be greater than zero.")
-    cost_per_pkg = p["initial_inventory_cost"] / total_pkgs
-    inventory    = p["initial_inventory"].copy()
+    inventory_value = p["initial_inventory_cost"]
+    inventory       = p["initial_inventory"].copy()
+    inventory_transit_value = 0
     monthly_amt  = p["monthly_price"] * (1 - p["prepaid_discount_rate"])
     cash         = 0
     cum_net_cash = 0
     prev_def_bal = 0
     pending      = []
-    monthly_cohorts  = []
-    prepaid_cohorts  = []
+    monthly_cohorts = []
+    prepaid_cohorts = []
 
     # Month 1: seed prepaid
     if p["initial_prepaid"] > 0:
@@ -153,17 +156,23 @@ def run_simulation(p):
                 })
 
         # Initialize monthly counters
-        reorder_cost  = 0
-        ship_mon      = {1:0,2:0,3:0}
-        ship_pre      = {1:0,2:0,3:0}
-        rev_pre       = 0
+        reorder_cost   = 0
+        ship_mon       = {1:0,2:0,3:0}
+        ship_pre       = {1:0,2:0,3:0}
+        rev_pre        = 0
         reorder_events = []
 
         # Process inventory arrivals
         arrivals = [x for x in pending if x[0] == m]
         for _, s, qty, cost in arrivals:
             inventory[s] += qty
+            inventory_value += cost
+            inventory_transit_value -= cost
         pending = [x for x in pending if x[0] > m]
+
+        # Compute current average cost
+        tot_inv = sum(inventory.values())
+        cost_per_pkg = inventory_value / tot_inv if tot_inv else 0
 
         # Ship monthly cohorts
         for c in monthly_cohorts:
@@ -200,15 +209,19 @@ def run_simulation(p):
                 pending.append((m + p["lead_time"], s, p["reorder_qty"], cost))
                 reorder_cost += cost
                 reorder_events.append(f"S{s}")
+                inventory_transit_value += cost
 
         # Financial calculations
-        rev_mon    = sum(ship_mon.values()) * p["monthly_price"]
-        total_rev  = rev_mon + rev_pre
+        total_ship = sum(exp.values())
         cogs_mon   = sum(ship_mon.values()) * cost_per_pkg
         cogs_pre   = sum(ship_pre.values()) * cost_per_pkg
         total_cogs = cogs_mon + cogs_pre
+        inventory_value -= total_cogs
+
+        rev_mon    = sum(ship_mon.values()) * p["monthly_price"]
+        total_rev  = rev_mon + rev_pre
         cac        = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
-        ship_cost  = sum(exp.values()) * p["shipping_cost_pkg"]
+        ship_cost  = total_ship * p["shipping_cost_pkg"]
         gross      = total_rev - total_cogs
         op_inc     = gross - cac
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
@@ -229,6 +242,8 @@ def run_simulation(p):
             "Inv S1":                 inventory[1],
             "Inv S2":                 inventory[2],
             "Inv S3":                 inventory[3],
+            "Inventory Value":        round(inventory_value, 2),
+            "Transit Value":          round(inventory_transit_value, 2),
             "Reorder Cost":           reorder_cost,
             "Reorder Stages":         ", ".join(reorder_events) or "-",
             "Monthly Revenue":        round(rev_mon,2),
@@ -259,10 +274,8 @@ def run_simulation(p):
 
 
 def build_financials(df, p):
-    total_pkgs = sum(p["initial_inventory"].values())
-    cost_per_pkg = 0 if total_pkgs == 0 else p["initial_inventory_cost"] / total_pkgs
     bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
-    bs["Inventory Value"]      = df[["Inv S1","Inv S2","Inv S3"]].sum(axis=1) * cost_per_pkg
+    bs["Inventory Value"]      = df["Inventory Value"] + df["Transit Value"]
     bs["Unearned Revenue"]     = df["Deferred Rev Balance"]
     bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory Value"]
     bs["Total Liabilities"]    = bs["Unearned Revenue"]
@@ -295,7 +308,7 @@ def build_financials(df, p):
     return bs, annual_is, cf
 
 
-# ─── Run & Display Reports ────────────────────────────────────────────────────
+# ─── Run & Display Reports ─────────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
@@ -312,7 +325,7 @@ st.dataframe(
 st.subheader("Annual Income Statement (Year 1)")
 st.dataframe(annual_is_df.style.format(fmt_flt))
 
-# ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month View", 1, params["simulation_months"]-2, 1
 )
