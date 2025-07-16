@@ -224,20 +224,14 @@ def run_simulation(p):
         ship_cost  = total_ship * p["shipping_cost_pkg"]
         gross      = total_rev - total_cogs
         op_inc     = gross - cac
-        deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
-        prev_def_bal = deferred_bal
-        net_inc        = op_inc - ship_cost
-        def_change     = deferred_bal - prev_def_bal
+        deferred_bal    = sum(c["deferred"] for c in prepaid_cohorts)
+        def_change      = deferred_bal - prev_def_bal
+        prev_def_bal    = deferred_bal
+        net_inc         = op_inc - ship_cost
         cash_from_sales = total_rev
         cash_expenses   = cac + ship_cost
         net_cash        = cash_from_sales - cash_expenses - reorder_cost + def_change
-       
-        records.append({
-            "Month":            m,
-            "Net Income":       round(net_inc,2),
-            "Net Cash Flow":    round(net_cash,2),
-            …
-        })
+        cash           += net_cash
 
         records.append({
             "Month":                  m,
