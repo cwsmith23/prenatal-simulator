@@ -234,7 +234,6 @@ def run_simulation(p):
        
         records.append({
             "Month":            m,
-            …,
             "Net Income":       round(net_inc,2),
             "Net Cash Flow":    round(net_cash,2),
             …
