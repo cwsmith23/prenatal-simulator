@@ -25,7 +25,7 @@ def allocate_with_remainder(total, fractions):
 st.set_page_config(layout="wide")
 st.title("BareBump Cash‑Flow Simulator & Financials")
 
-# ─── Sidebar Inputs ─────────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ──────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 100000, 250)
 init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 100000, 20)
@@ -85,7 +85,8 @@ def run_simulation(p):
     inventory       = p["initial_inventory"].copy()
     inventory_transit_value = 0
     monthly_amt  = p["monthly_price"] * (1 - p["prepaid_discount_rate"])
-    cash         = 0
+    cash         = p["initial_inventory_cost"]  # financing inflow
+    cash        -= p["initial_inventory_cost"]  # initial inventory purchase
     cum_net_cash = 0
     prev_def_bal = 0
     pending      = []
@@ -304,12 +305,12 @@ def build_financials(df, p):
         "Financing Cash Flow": 0
     })
     if not cf.empty:
-        cf.iloc[0, cf.columns.get_loc("Financing Cash Flow")] = -p["initial_inventory_cost"]
+        cf.iloc[0, cf.columns.get_loc("Financing Cash Flow")] = p["initial_inventory_cost"]
 
     return bs, annual_is, cf
 
 
-# ─── Run & Display Reports ─────────────────────────────────────────────────────
+# ─── Run & Display Reports ────────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
