@@ -83,13 +83,13 @@ def run_simulation(p):
     inventory    = p["initial_inventory"].copy()
     monthly_amt  = p["monthly_price"] * (1 - p["prepaid_discount_rate"])
     cash         = 0
+    cum_net_cash = 0
     pending      = []
     monthly_cohorts  = []
     prepaid_cohorts  = []
 
     # Month 1: seed prepaid
     if p["initial_prepaid"] > 0:
-        cash += p["initial_prepaid"] * monthly_amt * 9
         prepaid_cohorts.append({
             "start":    1,
             "count":    p["initial_prepaid"],
@@ -145,7 +145,6 @@ def run_simulation(p):
                         })
             # seed new prepaid
             if new_pre > 0:
-                cash += new_pre * monthly_amt * 9
                 prepaid_cohorts.append({
                     "start":    m,
                     "count":    new_pre,
@@ -213,8 +212,9 @@ def run_simulation(p):
         op_inc     = gross - cac
         net_inc    = op_inc - ship_cost
         net_cash   = net_inc - reorder_cost
-        cash       += net_cash
+        cum_net_cash += net_cash
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
+        cash       = cum_net_cash + deferred_bal
 
         records.append({
             "Month":                  m,
