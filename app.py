@@ -213,13 +213,14 @@ def run_simulation(p):
         op_inc     = gross - cac
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
         net_inc    = op_inc - ship_cost
-        def_change = deferred_bal - prev_def_bal
-        net_cash   = net_inc - reorder_cost + def_change
-        prev_def_bal = deferred_bal
-        cum_net_cash = net_cash
+        net_cash   = net_inc - reorder_cost
         cash       += net_cash
-
+        cash_balance = cash + deferred_bal
+        
         records.append({
+
+        
+        
             "Month":                  m,
             "New Monthly Subs":       new_mon,
             "New Prepaid Subs":       new_pre,
@@ -241,7 +242,7 @@ def run_simulation(p):
             "Shipping Exp":           round(ship_cost,2),
             "Net Income":             round(net_inc,2),
             "Net Cash Flow":          round(net_cash,2),
-            "Cash Balance":           round(cash,2),
+            "Cash Balance":           round(cash_balance,2),
             "Deferred Rev Balance":   round(deferred_bal,2),
         })
 
