@@ -217,7 +217,7 @@ def run_simulation(p):
         net_cash   = net_inc - reorder_cost + def_change
         prev_def_bal = deferred_bal
         cum_net_cash = net_cash
-        cash       += net_cash 
+        cash       += net_cash
 
         records.append({
             "Month":                  m,
