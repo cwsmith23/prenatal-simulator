@@ -396,7 +396,7 @@ df3.insert(0, "", [lbl for lbl,_ in rows])
 
 st.subheader("Balance Sheet (3‑Month View) Change Starting Month from Sidebar")
 height_px = (len(df3) + 1) * 35  # adjust multiplier as needed
-width_px = 750  # choose your desired pixel width
+width_px = 700  # choose your desired pixel width
 st.dataframe(df3, hide_index=True, height=height_px, width=width_px)
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
