@@ -225,9 +225,13 @@ def run_simulation(p):
         gross      = total_rev - total_cogs
         op_inc     = gross - cac
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
-        net_inc    = op_inc - ship_cost
-        def_change = deferred_bal - prev_def_bal
-        net_cash   = net_inc - reorder_cost + def_change
+        # --- replace net_inc & net_cash here ---
+        def_change      = deferred_bal - prev_def_bal
+        cash_from_sales = total_rev
+        cash_expenses   = cac + ship_cost
+        net_cash        = cash_from_sales - cash_expenses - reorder_cost + def_change
+        # ----------------------------------------
+
         prev_def_bal = deferred_bal
         cum_net_cash = net_cash
         cash       += net_cash
