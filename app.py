@@ -395,7 +395,8 @@ df3 = pd.DataFrame([vals for _, vals in rows], columns=cols)
 df3.insert(0, "", [lbl for lbl,_ in rows])
 
 st.subheader("Balance Sheet (3‑Month View) Change Starting Month from Sidebar")
-st.dataframe(df3, hide_index=True, use_container_width=True)
+height_px = (len(df3) + 1) * 35  # adjust multiplier as needed
+st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
     st.dataframe(
