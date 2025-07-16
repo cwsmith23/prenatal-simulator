@@ -319,6 +319,8 @@ fmt_flt = "{:,.2f}"
 
 # ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
 # 1) drop Transit Value
+# ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
+# 1) drop Transit Value
 display_df = sim_df.drop(columns=["Transit Value"])
 
 # 2) specify the exact column order you want
@@ -330,11 +332,12 @@ display_cols = [
     "Reorder Stages",      # keep stages with reorders
     "Monthly Revenue", "Prepaid Rev Recognized", "Total Revenue",
     "Total COGS", "Gross Profit",
-    "CAC",                 # moved to right after gross profit
+    "CAC",                 # between Gross Profit & Operating Income
     "Operating Income",
     "Shipping Exp",
-    "Reorder Cost",        # moved to right after shipping exp
-    "Net Income", "Net Cash Flow",
+    "Net Income",          # before Reorder Cost
+    "Reorder Cost",        # moved to right after Net Income
+    "Net Cash Flow",
     "Cash Balance", "Deferred Rev Balance"
 ]
 display_df = display_df[display_cols]
@@ -346,6 +349,7 @@ st.dataframe(
         .format(fmt_int, subset=display_df.select_dtypes("int").columns)
         .format(fmt_flt, subset=display_df.select_dtypes("float").columns)
 )
+
 
 
 st.subheader("Annual Income Statement (Year 1)")
