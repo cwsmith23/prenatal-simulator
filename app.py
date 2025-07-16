@@ -153,7 +153,7 @@ def run_simulation(p):
                 })
 
         # Initialize monthly counters
-        inv_cost      = 0
+        reorder_cost  = 0
         ship_mon      = {1:0,2:0,3:0}
         ship_pre      = {1:0,2:0,3:0}
         rev_pre       = 0
@@ -163,7 +163,6 @@ def run_simulation(p):
         arrivals = [x for x in pending if x[0] == m]
         for _, s, qty, cost in arrivals:
             inventory[s] += qty
-            inv_cost += cost
         pending = [x for x in pending if x[0] > m]
 
         # Ship monthly cohorts
@@ -191,7 +190,6 @@ def run_simulation(p):
 
         # Reorder logic (correct inventory check)
         exp = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
-        reorder_cost = 0
         for s in (1, 2, 3):
             # deduct shipments from inventory
             inventory[s] -= exp[s]
@@ -214,7 +212,7 @@ def run_simulation(p):
         gross      = total_rev - total_cogs
         op_inc     = gross - cac
         net_inc    = op_inc - ship_cost
-        net_cash   = rev_mon - cac - ship_cost - inv_cost
+         net_cash   = rev_mon - cac - ship_cost - reorder_cost
         cash      += net_cash
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
 
