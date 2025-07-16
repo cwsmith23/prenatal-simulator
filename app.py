@@ -211,10 +211,10 @@ def run_simulation(p):
         gross      = total_rev - total_cogs
         op_inc     = gross - cac
         net_inc    = op_inc - ship_cost
-        net_cash   = net_inc - reorder_cost
+        net_cash   = net_inc - reorder_cost + deferred_bal
         cum_net_cash = net_cash
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
-        cash       += net_cash + deferred_bal
+        cash       += net_cash 
 
         records.append({
             "Month":                  m,
