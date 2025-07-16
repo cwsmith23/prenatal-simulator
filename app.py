@@ -403,65 +403,58 @@ st.dataframe(bs_df.style.format(fmt_flt))
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt))
 
-# ─── Bottom Notes / Calculation Details ────────────────────────────────────────
+# Insert this at the bottom of your Streamlit script, after your last st.dataframe() call
 with st.expander("📋 All Calculation Methods"):
     st.markdown(r"""
-### Cohort Allocations & Shipments
-- **Alive Subscribers** = `sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)`
-- **Potential Growth** = `alive * subscriber_growth_rate`
-- **New Prepaid Subs** = `alloc["pre"]` from `allocate_with_remainder(round(potential_growth), {"pre": percent_prepaid, "mon": 1-percent_prepaid})`
-- **New Monthly Subs** = `alloc["mon"]`
-- **Stage 1 Shipped** = `ship_mon[1] + ship_pre[1]`
-- **Stage 2 Shipped** = `ship_mon[2] + ship_pre[2]`
-- **Stage 3 Shipped** = `ship_mon[3] + ship_pre[3]`
+    ### Subscriber Growth and Shipments
+    - **Total Active Subscribers**: count of all current monthly and prepaid subscribers
+    - **Estimated New Subscribers** = Total Active Subscribers × Monthly Growth Rate
+    - **New Prepaid Subscriptions** = Estimated New Subscribers × Percent Prepaid
+    - **New Monthly Subscriptions** = Estimated New Subscribers × (1 − Percent Prepaid)
+    - **Shipment Breakdown by Stage**:
+      - Stage 1 shipment count
+      - Stage 2 shipment count
+      - Stage 3 shipment count
 
-### Inventory & Arrivals
-- **Arrivals**: filter `pending` for entries due this month: `[(m, s, qty, cost) for (m, s, qty, cost) in pending if m == current_month]`
-- **Inv S* (end of month)** = `prev_inventory[s] + arrivals_stage_s - shipments_stage_s`
-- **Inventory Value** variable updates:
-  - on arrival: `inventory_value += cost`
-  - on COGS: `inventory_value -= total_cogs`
+    ### Inventory Management
+    - **End‑of‑Month Inventory for Each Stage** = Previous Month Inventory + New Arrivals − Total Shipments for the Stage
+    - **Safety Stock Threshold** = Ceiling of [(Current Month Shipments + (Current Month Shipments × Lead Time in Months)) × Safety Factor]
+    - **Reorder Trigger**: when inventory for a stage ≤ Safety Stock Threshold, an order of the Reorder Quantity is placed at the fixed stage reorder cost, arriving after the lead time.
 
-### Pricing & COGS
-- **monthly_amt** = `monthly_price * (1 - prepaid_discount_rate)`
-- **cost_per_pkg** = `inventory_value / total_inventory` if `total_inventory > 0` else `0`
-- **Monthly COGS** = `sum(ship_mon.values()) * cost_per_pkg`
-- **Prepaid COGS** = `sum(ship_pre.values()) * cost_per_pkg`
-- **Total COGS** = `cogs_mon + cogs_pre`
+    ### Pricing & Cost of Goods Sold (COGS)
+    - **Effective Prepaid Pack Price** = Standard Pack Price × (1 − Prepaid Discount Rate)
+    - **Average Cost per Pack** = Total Inventory Value ÷ Total Packs on Hand
+    - **COGS** = (Total Monthly Packs Shipped + Total Prepaid Packs Shipped) × Average Cost per Pack
 
-### Revenue
-- **Monthly Revenue** = `sum(ship_mon.values()) * monthly_price`
-- **Prepaid Rev Recognized** = `sum(ship_pre.values()) * monthly_amt`
-- **Total Revenue** = `Monthly Revenue + Prepaid Rev Recognized`
+    ### Revenue & Profit
+    - **Monthly Subscription Revenue** = Total Monthly Packs Shipped × Standard Pack Price
+    - **Prepaid Revenue Recognized** = Total Prepaid Packs Shipped × Effective Prepaid Pack Price
+    - **Total Revenue** = Monthly Subscription Revenue + Prepaid Revenue Recognized
+    - **Gross Profit** = Total Revenue − COGS
 
-### Profit & Expenses
-- **Gross Profit** = `Total Revenue - Total COGS`
-- **Operating Expense** = `New Monthly Subs * cac_new_monthly + New Prepaid Subs * cac_new_prepaid`
-- **Operating Income** = `Gross Profit - Operating Expense`
-- **Shipping Exp** = `sum(ship_mon.values()) + sum(ship_pre.values()) * shipping_cost_pkg`
-- **Net Income** = `Operating Income - Shipping Exp`
+    ### Operating Expenses
+    - **Customer Acquisition Cost (CAC)** = (New Monthly Subscriptions × Monthly CAC) + (New Prepaid Subscriptions × Prepaid CAC)
+    - **Operating Income** = Gross Profit − Customer Acquisition Cost
+    - **Shipping Expense** = (Total Monthly Packs Shipped + Total Prepaid Packs Shipped) × Shipping Cost per Pack
+    - **Net Income** = Operating Income − Shipping Expense
 
-### Reorder Logic
-- **Threshold** (`thr`) = `ceil((current_demand + future_demand) * reorder_safety)` where `current_demand = exp[s]` and `future_demand = exp[s] * lead_time`
-- **Reorder Trigger**: when `inventory[s] <= thr`
-- **Reorder Quantity** = `reorder_qty`
-- **Reorder Cost** = `sum(p["reorder_cost"][s] for each triggered stage)`
-- **Pending Append**: `pending.append((month + lead_time, s, reorder_qty, cost))`
+    ### Reorder Costs
+    - **Reorder Cost** = Sum of fixed reorder fees for each stage reorder event in the month
 
-### Cash Flow
-- **Deferred Rev Balance** = `sum(c["deferred"] for c in prepaid_cohorts)`
-- **Def Change** = `deferred_bal - prev_def_bal`
-- **Cash from Sales** = `Total Revenue`
-- **Cash Expenses** = `Operating Expense + Shipping Exp`
-- **Net Cash Flow** = `Cash from Sales - Cash Expenses - Reorder Cost + Def Change`
-- **Cash Balance** = `previous_cash + Net Cash Flow`
+    ### Cash Flow
+    - **Deferred Revenue Balance** = Outstanding prepaid revenue not yet recognized
+    - **Change in Deferred Revenue** = This Month’s Deferred Revenue Balance − Last Month’s Deferred Revenue Balance
+    - **Cash Inflow from Sales** = Total Revenue
+    - **Cash Outflow for Expenses** = Customer Acquisition Cost + Shipping Expense
+    - **Net Cash Flow** = Cash Inflow from Sales − Cash Outflow for Expenses − Reorder Cost + Change in Deferred Revenue
+    - **Cash Balance** = Previous Cash Balance + Net Cash Flow
 
-### Balance Sheet Lines
-- **Unearned Revenue** = `Deferred Rev Balance`
-- **Total Current Assets** = `Cash Balance + Inventory Value + Transit Value`
-- **Total Liabilities** = `Unearned Revenue`
-- **Paid‑in Capital** = `initial_inventory_cost`
-- **Retained Earnings** = `cumsum(Net Income)`
-- **Total Equity** = `Paid‑in Capital + Retained Earnings`
-- **Total L&E** = `Total Liabilities + Total Equity`
-""")
+    ### Balance Sheet Overview
+    - **Cash Balance**: Cumulative cash available at period end
+    - **Inventory Value**: Sum of on‑hand pack value and inventory in transit
+    - **Unearned Revenue**: Deferred Revenue Balance under liabilities
+    - **Paid‑in Capital**: Initial inventory financing amount
+    - **Retained Earnings**: Cumulative sum of Net Income over time
+    - **Total Equity**: Paid‑in Capital + Retained Earnings
+    - **Total Liabilities and Equity**: Unearned Revenue + Total Equity (matches Total Assets)
+    """ )
