@@ -402,3 +402,44 @@ st.dataframe(bs_df.style.format(fmt_flt))
 
 st.subheader("Monthly Cash Flow Statement")
 st.dataframe(cf_df.style.format(fmt_flt))
+
+# ─── Bottom Notes / Calculation Details ────────────────────────────────────────
+with st.expander("📋 Calculation Details"):
+    st.markdown("""
+    - **Monthly Revenue**  
+      `= (Stage 1 Shipped + Stage 2 Shipped + Stage 3 Shipped) × Sale Price`
+
+    - **Prepaid Rev Recognized**  
+      `= Prepaid Packs Shipped × (Sale Price × (1 – Prepaid Discount))`
+
+    - **Total COGS**  
+      `= (Monthly Packs Shipped + Prepaid Packs Shipped) × Avg Cost per Pack`
+
+    - **Gross Profit**  
+      `= Total Revenue – Total COGS`
+
+    - **CAC**  
+      `= New Monthly Subs × CAC_monthly + New Prepaid Subs × CAC_prepaid`
+
+    - **Shipping Exp**  
+      `= (Total Packs Shipped) × Shipping Cost per Pack`
+
+    - **Operating Income**  
+      `= Gross Profit – CAC`
+
+    - **Net Income**  
+      `= Operating Income – Shipping Exp`
+
+    - **Reorder Cost**  
+      Fixed cost triggered whenever inventory ≤ safety threshold.
+
+    - **Net Cash Flow**  
+      `= Total Revenue – (CAC + Shipping Exp) – Reorder Cost + ΔDeferred Revenue`
+
+    - **Cash Balance**  
+      Cumulative sum of Net Cash Flow over months.
+
+    - **Deferred Rev Balance**  
+      Outstanding prepaid revenue not yet recognized.
+    """)
+
