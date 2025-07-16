@@ -213,7 +213,7 @@ def run_simulation(p):
         op_inc     = gross - cac
         net_inc    = op_inc - ship_cost
         net_cash   = net_inc - reorder_cost
-        cash      += net_cash
+        cash       = net_cash + deferred_bal 
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
 
         records.append({
