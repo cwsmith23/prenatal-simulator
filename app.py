@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import math
 
+
 def allocate_with_remainder(total, fractions):
     """Allocate integer counts from a total based on fractional weights."""
     allocations = {k: 0 for k in fractions}
@@ -23,7 +24,7 @@ def allocate_with_remainder(total, fractions):
 st.set_page_config(layout="wide")
 st.title("BareBump Cash‑Flow Simulator & Financials")
 
-# ─── Sidebar Inputs ─────────────────────────────────────────────────────────────
+# ─── Sidebar Inputs ────────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 100000, 250)
 init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 100000, 20)
@@ -97,7 +98,7 @@ def run_simulation(p):
 
     # Month 1: seed monthly cohorts into start stages
     s1_limit = next(iter(p["ship1_dist"].keys()))
-       stage_alloc = allocate_with_remainder(p["initial_subscribers"], p["start_stage_dist"])
+    stage_alloc = allocate_with_remainder(p["initial_subscribers"], p["start_stage_dist"])
     for stg, base_cnt in stage_alloc.items():
         if base_cnt == 0:
             continue
@@ -107,7 +108,7 @@ def run_simulation(p):
             pseudo_start = 1 - (s1_limit + 1)
         else:
             pseudo_start = 1 - (s1_limit + 4)
-       ship_alloc = allocate_with_remainder(base_cnt, p["ship1_dist"])
+        ship_alloc = allocate_with_remainder(base_cnt, p["ship1_dist"])
         for lim, cnt in ship_alloc.items():
             if cnt > 0:
                 monthly_cohorts.append({
@@ -125,14 +126,14 @@ def run_simulation(p):
         else:
             alive   = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
             tot     = alive * p["subscriber_growth_rate"]
-               alloc   = allocate_with_remainder(
+            alloc   = allocate_with_remainder(
                 int(round(tot)),
                 {"pre": p["percent_prepaid"], "mon": 1 - p["percent_prepaid"]}
             )
             new_pre = alloc["pre"]
             new_mon = alloc["mon"]
             # seed new monthly cohorts
-              stage_alloc = allocate_with_remainder(new_mon, p["start_stage_dist"])
+            stage_alloc = allocate_with_remainder(new_mon, p["start_stage_dist"])
             for stg, base_cnt in stage_alloc.items():
                 ship_alloc = allocate_with_remainder(base_cnt, p["ship1_dist"])
                 for lim, cnt in ship_alloc.items():
@@ -292,7 +293,7 @@ def build_financials(df, p):
     return bs, annual_is, cf
 
 
-# ─── Run & Display Reports ─────────────────────────────────────────────────────
+# ─── Run & Display Reports ────────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 
@@ -309,7 +310,7 @@ st.dataframe(
 st.subheader("Annual Income Statement (Year 1)")
 st.dataframe(annual_is_df.style.format(fmt_flt))
 
-# ─── 3‑Month Balance Sheet View ────────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month View", 1, params["simulation_months"]-2, 1
 )
