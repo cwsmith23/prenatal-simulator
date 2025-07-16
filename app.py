@@ -253,7 +253,7 @@ def build_financials(df, p):
         "Gross Profit": df["Gross Profit"],
         "Op Expenses":  df["CAC"] + df["Shipping Exp"],
         "Op Income":    df["Operating Income"],
-        "Net Income":   df["Net Income"] - df["Shipping Exp"],
+        "Net Income":   df["Net Income"],
     })
     annual_is = is_df.head(12).sum().to_frame().T
     annual_is.index = ["Year 1"]
