@@ -397,11 +397,7 @@ df3.insert(0, "", [lbl for lbl,_ in rows])
 clean_df3 = df3.reset_index(drop=True)
 
 st.subheader("Balance Sheet (3‑Month View)")
-st.dataframe(
-    clean_df3,
-    use_container_width=True
-    # (you already have hide_index=True here if you like)
-)
+st.table(df3)
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
     st.dataframe(
