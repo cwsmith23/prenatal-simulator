@@ -394,8 +394,10 @@ cols = [f"Month {m}" for m in slice_df.index]
 df3 = pd.DataFrame([vals for _, vals in rows], columns=cols)
 df3.insert(0, "", [lbl for lbl,_ in rows])
 
+clean_df3 = df3.reset_index(drop=True)
+
 st.subheader("Balance Sheet (3‑Month View) Change Starting Month from Sidebar")
-st.dataframe(df3, hide_index=True, use_container_width=True)
+st.table(clean_df3)
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
     st.dataframe(
