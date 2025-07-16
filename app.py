@@ -84,6 +84,7 @@ def run_simulation(p):
     monthly_amt  = p["monthly_price"] * (1 - p["prepaid_discount_rate"])
     cash         = 0
     cum_net_cash = 0
+    prev_def_bal = 0
     pending      = []
     monthly_cohorts  = []
     prepaid_cohorts  = []
@@ -212,7 +213,9 @@ def run_simulation(p):
         op_inc     = gross - cac
         deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
         net_inc    = op_inc - ship_cost
-        net_cash   = net_inc - reorder_cost + deferred_bal
+        def_change = deferred_bal - prev_def_bal
+        net_cash   = net_inc - reorder_cost + def_change
+        prev_def_bal = deferred_bal
         cum_net_cash = net_cash
         cash       += net_cash 
 
