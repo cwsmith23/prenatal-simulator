@@ -397,11 +397,17 @@ df3.insert(0, "", [lbl for lbl,_ in rows])
 st.subheader("Balance Sheet (3‑Month View)")
 st.dataframe(df3, hide_index=True, use_container_width=True)
 
-st.subheader("Balance Sheet (End of Month)")
-st.dataframe(bs_df.style.format(fmt_flt))
+with st.expander("📊 Balance Sheet (End of Month)"):
+    st.dataframe(
+        bs_df.style
+             .format(fmt_flt)
+    )
 
-st.subheader("Monthly Cash Flow Statement")
-st.dataframe(cf_df.style.format(fmt_flt))
+with st.expander("📈 Monthly Cash Flow Statement"):
+    st.dataframe(
+        cf_df.style
+             .format(fmt_flt)
+    )
 
 # Insert this at the bottom of your Streamlit script, after your last st.dataframe() call
 with st.expander("📋 All Calculation Methods"):
