@@ -317,12 +317,36 @@ bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
 
+# ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
+# 1) drop Transit Value
+display_df = sim_df.drop(columns=["Transit Value"])
+
+# 2) specify the exact column order you want
+display_cols = [
+    "New Monthly Subs", "New Prepaid Subs",
+    "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
+    "Inv S1", "Inv S2", "Inv S3",
+    "Inventory Value",     # on‑hand inventory
+    "Reorder Stages",      # keep stages with reorders
+    "Monthly Revenue", "Prepaid Rev Recognized", "Total Revenue",
+    "Total COGS", "Gross Profit",
+    "CAC",                 # moved to right after gross profit
+    "Operating Income",
+    "Shipping Exp",
+    "Reorder Cost",        # moved to right after shipping exp
+    "Net Income", "Net Cash Flow",
+    "Cash Balance", "Deferred Rev Balance"
+]
+display_df = display_df[display_cols]
+
+# 3) render
 st.subheader("Monthly Simulation Details")
 st.dataframe(
-    sim_df.style
-          .format(fmt_int, subset=sim_df.select_dtypes("int").columns)
-          .format(fmt_flt, subset=sim_df.select_dtypes("float").columns)
+    display_df.style
+        .format(fmt_int, subset=display_df.select_dtypes("int").columns)
+        .format(fmt_flt, subset=display_df.select_dtypes("float").columns)
 )
+
 
 st.subheader("Annual Income Statement (Year 1)")
 st.dataframe(annual_is_df.style.format(fmt_flt))
