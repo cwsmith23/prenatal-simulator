@@ -399,9 +399,22 @@ height_px = (len(df3) + 1) * 35  # adjust multiplier as needed
 st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
+    # --- reorder columns so Unearned Revenue sits between Assets and Liabilities ---
+    bs_order = [
+        "Cash Balance",
+        "Inventory Value",
+        "Total Current Assets",
+        "Unearned Revenue",
+        "Total Liabilities",
+        "Paid‑in Capital",
+        "Retained Earnings",
+        "Total Equity",
+        "Total L&E"
+    ]
     st.dataframe(
-        bs_df.style
-             .format(fmt_flt)
+        bs_df[bs_order]
+            .style
+            .format(fmt_flt)
     )
 
 with st.expander("📈 Monthly Cash Flow Statement"):
