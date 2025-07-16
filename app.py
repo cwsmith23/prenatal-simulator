@@ -397,7 +397,12 @@ df3.insert(0, "", [lbl for lbl,_ in rows])
 clean_df3 = df3.reset_index(drop=True)
 
 st.subheader("Balance Sheet (3‑Month View)")
-st.table(df3)
+# hide the DataFrame’s own index via Styler.hide_index()
+styled_df3 = df3.style.hide_index()
+st.dataframe(
+    styled_df3
+      .format(fmt_flt)        # your existing number formatting
+, use_container_width=True)
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
     st.dataframe(
