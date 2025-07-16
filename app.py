@@ -210,10 +210,10 @@ def run_simulation(p):
         ship_cost  = sum(exp.values()) * p["shipping_cost_pkg"]
         gross      = total_rev - total_cogs
         op_inc     = gross - cac
+        deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
         net_inc    = op_inc - ship_cost
         net_cash   = net_inc - reorder_cost + deferred_bal
         cum_net_cash = net_cash
-        deferred_bal = sum(c["deferred"] for c in prepaid_cohorts)
         cash       += net_cash 
 
         records.append({
