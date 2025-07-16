@@ -397,7 +397,7 @@ df3.insert(0, "", [lbl for lbl,_ in rows])
 st.subheader("Balance Sheet (3‑Month View) Change Starting Month from Sidebar")
 st.dataframe(df3, hide_index=True, use_container_width=True)
 
-with st.expander("📊 Balance Sheet (End of Month)"):
+with st.expander("📊 Balance Sheet (Months 1-12)"):
     st.dataframe(
         bs_df.style
              .format(fmt_flt)
