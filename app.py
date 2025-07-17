@@ -394,7 +394,7 @@ st.subheader("Balance Sheet (3‑Month View) Change Starting Month from Sidebar"
 height_px = (len(df3) + 1) * 35  # adjust multiplier as needed
 st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 
-st.subheader("Annual Income Statement (Year 1)")
+st.subheader("Annual Income Statement")
 st.dataframe(annual_is_df.style.format(fmt_flt))
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
