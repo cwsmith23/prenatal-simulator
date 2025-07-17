@@ -234,6 +234,9 @@ def run_simulation(p):
         net_cash        = cash_from_sales - cash_expenses - reorder_cost + def_change
         cash           += net_cash
 
+        subscribers_total = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
+        prepaid_total = sum(c["count"] for c in prepaid_cohorts)
+
         records.append({
             "Month":                  m,
             "New Monthly Subs":       new_mon,
@@ -260,6 +263,9 @@ def run_simulation(p):
             "Net Cash Flow":          round(net_cash,2),
             "Cash Balance":           round(cash,2),
             "Deferred Rev Balance":   round(deferred_bal,2),
+            "Total Shipments":        total_ship,
+            "Total Subscribers":      subscribers_total,
+            "Total Prepaid Subs":     prepaid_total,
         })
 
         # Prune expired cohorts
@@ -319,14 +325,13 @@ fmt_flt = "{:,.2f}"
 
 # ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
 # 1) drop Transit Value
-# ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
-# 1) drop Transit Value
 display_df = sim_df.drop(columns=["Transit Value"])
 
 # 2) specify the exact column order you want
 display_cols = [
     "New Monthly Subs", "New Prepaid Subs",
     "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
+    "Total Shipments", "Total Subscribers", "Total Prepaid Subs",
     "Inv S1", "Inv S2", "Inv S3",
     "Inventory Value",     # on‑hand inventory
     "Reorder Stages",      # keep stages with reorders
@@ -349,7 +354,6 @@ st.dataframe(
         .format(fmt_int, subset=display_df.select_dtypes("int").columns)
         .format(fmt_flt, subset=display_df.select_dtypes("float").columns)
 )
-
 
 # ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
 start_month = st.sidebar.number_input(
