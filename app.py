@@ -351,10 +351,6 @@ st.dataframe(
 )
 
 
-
-st.subheader("Annual Income Statement (Year 1)")
-st.dataframe(annual_is_df.style.format(fmt_flt))
-
 # ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month View", 1, params["simulation_months"]-2, 1
@@ -397,6 +393,9 @@ df3.insert(0, "", [lbl for lbl,_ in rows])
 st.subheader("Balance Sheet (3‑Month View) Change Starting Month from Sidebar")
 height_px = (len(df3) + 1) * 35  # adjust multiplier as needed
 st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
+
+st.subheader("Annual Income Statement (Year 1)")
+st.dataframe(annual_is_df.style.format(fmt_flt))
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
     # --- reorder columns so Unearned Revenue sits between Assets and Liabilities ---
