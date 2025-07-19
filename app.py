@@ -53,6 +53,7 @@ ship1_1       = st.sidebar.number_input("Pct Ship Stage 1 Initial", 0.0, 1.0, 0
 ship1_2       = st.sidebar.number_input("Pct Ship Stage 2 Initial", 0.0, 1.0, 0.15, format="%.2f")
 ship1_3       = st.sidebar.number_input("Pct Ship Stage 3 Initial", 0.0, 1.0, 0.05, format="%.2f")
 months        = st.sidebar.number_input("Simulation Months", 1, 36, 12)
+tax_rate      = st.sidebar.slider("Income Tax Rate", 0.0, 1.0, 0.21, step=0.01, format="%.2f")
 
 params = {
     "monthly_price":          monthly_price,
@@ -316,9 +317,12 @@ def build_financials(df, p):
     return bs, annual_is, cf
 
 
-# ─── Run & Display Reports ────────────────────────────────────────────────────
+# ─── Run & Display Reports ───────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
+annual_is_df = annual_is_df.copy()
+annual_is_df["Income Tax"] = annual_is_df["Net Income"] * tax_rate
+annual_is_df["Income After Tax"] = annual_is_df["Net Income"] - annual_is_df["Income Tax"]
 
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
@@ -355,7 +359,7 @@ st.dataframe(
         .format(fmt_flt, subset=display_df.select_dtypes("float").columns)
 )
 
-# ─── 3‑Month Balance Sheet View ───────────────────────────────────────────────
+# ─── 3‑Month Balance Sheet View ──────────────────────────────────────────────
 start_month = st.sidebar.number_input(
     "Start Month for 3‑Month View", 1, params["simulation_months"]-2, 1
 )
