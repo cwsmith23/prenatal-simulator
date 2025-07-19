@@ -74,8 +74,7 @@ params = {
     "reorder_safety":         safety,
     "start_stage_dist":       {1: st1, 2: st2, 3: st3},
     "ship1_dist":             {1: ship1_1, 2: ship1_2, 3: ship1_3},
-    "simulation_months":      months,
-    "tax_rate":               tax_rate
+    "simulation_months":      months
 }
 
 
@@ -94,7 +93,6 @@ def run_simulation(p):
     pending      = []
     monthly_cohorts = []
     prepaid_cohorts = []
-    tax_payable = 0
 
     # Month 1: seed prepaid
     if p["initial_prepaid"] > 0:
@@ -232,18 +230,9 @@ def run_simulation(p):
         def_change      = deferred_bal - prev_def_bal
         prev_def_bal    = deferred_bal
         net_inc         = op_inc - ship_cost
-        tax_expense     = net_inc * p["tax_rate"]
-        net_inc_after_tax = net_inc - tax_expense
-        tax_payable    += tax_expense
         cash_from_sales = total_rev
         cash_expenses   = cac + ship_cost
         net_cash        = cash_from_sales - cash_expenses - reorder_cost + def_change
-        tax_paid = 0
-        if m % 3 == 0:
-            tax_paid   = tax_payable
-            cash      -= tax_paid
-            net_cash  -= tax_paid
-            tax_payable = 0
         cash           += net_cash
 
         subscribers_total = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
@@ -272,10 +261,6 @@ def run_simulation(p):
             "CAC":                    round(cac,2),
             "Shipping Exp":           round(ship_cost,2),
             "Net Income":             round(net_inc,2),
-            "Tax Expense":            round(tax_expense,2),
-            "Tax Paid":               round(tax_paid,2),
-            "Net Income After Tax":   round(net_inc_after_tax,2),
-            "Tax Payable":            round(tax_payable,2),
             "Net Cash Flow":          round(net_cash,2),
             "Cash Balance":           round(cash,2),
             "Deferred Rev Balance":   round(deferred_bal,2),
@@ -301,11 +286,10 @@ def build_financials(df, p):
     bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
     bs["Inventory Value"]      = df["Inventory Value"] + df["Transit Value"]
     bs["Unearned Revenue"]     = df["Deferred Rev Balance"]
-    bs["Taxes Payable"]        = df["Tax Payable"]
     bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory Value"]
-    bs["Total Liabilities"]    = bs["Unearned Revenue"] + bs["Taxes Payable"]
+    bs["Total Liabilities"]    = bs["Unearned Revenue"]
     bs["Paid‑in Capital"]      = p["initial_inventory_cost"]
-    bs["Retained Earnings"]    = df["Net Income After Tax"].cumsum()
+    bs["Retained Earnings"]    = df["Net Income"].cumsum()
     bs["Total Equity"]         = bs["Paid‑in Capital"] + bs["Retained Earnings"]
     bs["Total L&E"]            = bs["Total Liabilities"] + bs["Total Equity"]
 
@@ -317,9 +301,7 @@ def build_financials(df, p):
         "Op Expenses":  df["CAC"],
         "Op Income":    df["Operating Income"],
         "Shipping Expenses": df["Shipping Exp"],
-        "Tax Expense":  df["Tax Expense"],
         "Net Income":   df["Net Income"],
-        "Net Income After Tax": df["Net Income After Tax"],
     })
     annual_is = is_df.head(12).sum().to_frame().T
     annual_is.index = ["Year 1"]
@@ -338,6 +320,9 @@ def build_financials(df, p):
 # ─── Run & Display Reports ───────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
+annual_is_df = annual_is_df.copy()
+annual_is_df["Income Tax"] = annual_is_df["Net Income"] * tax_rate
+annual_is_df["Income After Tax"] = annual_is_df["Net Income"] - annual_is_df["Income Tax"]
 
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
@@ -360,13 +345,9 @@ display_cols = [
     "Operating Income",
     "Shipping Exp",
     "Net Income",          # before Reorder Cost
-    "Tax Expense",
-    "Tax Paid",
-    "Net Income After Tax",
     "Reorder Cost",        # moved to right after Net Income
     "Net Cash Flow",
-    "Cash Balance", "Deferred Rev Balance",
-    "Tax Payable"
+    "Cash Balance", "Deferred Rev Balance"
 ]
 display_df = display_df[display_cols]
 
@@ -385,7 +366,7 @@ start_month = st.sidebar.number_input(
 slice_df = bs_df.loc[start_month:start_month+2]
 fmt3 = slice_df.T.copy()
 fmt3.index = [
-    "Cash","Inventory","Unearned Revenue","Taxes Payable",
+    "Cash","Inventory","Unearned Revenue",
     "Total Current Assets","Total Liabilities",
     "Paid‑in Capital","Retained Earnings",
     "Total Equity","Total L&E"
@@ -400,7 +381,7 @@ for lbl in ["Cash","Inventory","Total Current Assets"]:
 rows.append(("", ["", "", ""]))
 # Current Liabilities
 rows.append(("Current Liabilities:", ["", "", ""]))
-for lbl in ["Unearned Revenue","Taxes Payable","Total Liabilities"]:
+for lbl in ["Unearned Revenue","Total Liabilities"]:
     ind = "  " if lbl != "Total Liabilities" else ""
     rows.append((f"{ind}{lbl}", [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
@@ -431,7 +412,6 @@ with st.expander("📊 Balance Sheet (Months 1-12)"):
         "Inventory Value",
         "Total Current Assets",
         "Unearned Revenue",
-        "Taxes Payable",
         "Total Liabilities",
         "Paid‑in Capital",
         "Retained Earnings",
@@ -505,3 +485,4 @@ with st.expander("📋 All Calculation Methods"):
     - **Total Equity**: Paid‑in Capital + Retained Earnings
     - **Total Liabilities and Equity**: Unearned Revenue + Total Equity (matches Total Assets)
     """ )
+
