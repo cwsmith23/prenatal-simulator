@@ -41,9 +41,13 @@ def fmt_nested(d):
         return fmt_val(d)
     return ", ".join([f"S{sk}:{fmt_val(sv)}" for sk, sv in d.items()])
 
+def q2(x: float) -> float:
+    """Quantize to cents (avoid float drift)."""
+    return float(round((x if x is not None else 0.0) + 1e-12, 2))
+
 # ─── App Setup ────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
-st.title("BareBump Cash-Flow Simulator & Financials (GAAP-aligned)")
+st.title("BareBump Cash-Flow Simulator & Financials (GAAP-aligned + cent-exact)")
 
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
@@ -114,25 +118,28 @@ def run_simulation(p):
     if total_pkgs == 0:
         raise ValueError("Initial inventory must be greater than zero.")
 
-    inventory_value = p["initial_inventory_cost"]          # on-hand inventory value
-    inventory       = p["initial_inventory"].copy()        # on-hand units by stage
-    inventory_transit_value = 0                            # in-transit inventory value
+    # Inventory & cash
+    inventory_value = q2(p["initial_inventory_cost"])       # on-hand value
+    inventory       = p["initial_inventory"].copy()         # on-hand units
+    inventory_transit_value = q2(0.0)
     monthly_amt  = p["monthly_price"] * (1 - p["prepaid_discount_rate"])
-    cash         = p["initial_inventory_cost"]             # equity financing inflow
-    cash        -= p["initial_inventory_cost"]             # initial inventory purchase (operating outflow)
-    prev_def_bal = 0
-    taxes_payable = 0
+    cash         = q2(p["initial_inventory_cost"])          # equity financing inflow
+    cash        = q2(cash - p["initial_inventory_cost"])    # initial inventory purchase
+    taxes_payable = q2(0.0)
+
+    # Deferred revenue centralized (exact)
+    deferred_bal = q2(p["initial_prepaid"] * monthly_amt * 9)
+    prev_def_bal = deferred_bal
 
     pending      = []  # (arrive_month, stage, qty, cost)
     monthly_cohorts = []
     prepaid_cohorts = []
 
-    # Month 1: seed prepaid (cash comes via ∆deferred in cash flow)
+    # Month 1: seed prepaid cohort (for shipping cadence only)
     if p["initial_prepaid"] > 0:
         prepaid_cohorts.append({
             "start":    1,
             "count":    p["initial_prepaid"],
-            "deferred": p["initial_prepaid"] * monthly_amt * 9
         })
 
     # Month 1: seed monthly cohorts into start stages
@@ -182,33 +189,33 @@ def run_simulation(p):
                             "count":    cnt,
                             "s1_limit": lim
                         })
-            # seed new prepaid (deferred revenue set; cash realized via ∆deferred)
+            # seed new prepaid cohort & increase deferred
             if new_pre > 0:
                 prepaid_cohorts.append({
                     "start":    m,
                     "count":    new_pre,
-                    "deferred": new_pre * monthly_amt * 9
                 })
+                deferred_bal = q2(deferred_bal + q2(new_pre * monthly_amt * 9))
 
         # Initialize monthly counters
-        reorder_cost   = 0
+        reorder_cost   = q2(0.0)
         reorder_events = []
-        ship_mon_demand = {1:0,2:0,3:0}  # intended shipments
-        ship_pre_demand = {1:0,2:0,3:0}  # intended shipments
+        ship_mon_demand = {1:0,2:0,3:0}
+        ship_pre_demand = {1:0,2:0,3:0}
 
         # Process inventory arrivals (capitalize to on-hand; reduce transit)
         arrivals = [x for x in pending if x[0] == m]
         for _, s, qty, cost in arrivals:
             inventory[s] += qty
-            inventory_value += cost
-            inventory_transit_value -= cost
+            inventory_value = q2(inventory_value + cost)
+            inventory_transit_value = q2(inventory_transit_value - cost)
         pending = [x for x in pending if x[0] > m]
 
-        # Compute weighted-average cost per on-hand unit
+        # Weighted-average cost per on-hand unit (stabilize to 4 decimals)
         tot_inv = sum(inventory.values())
-        cost_per_pkg = inventory_value / tot_inv if tot_inv > 0 else 0.0
+        cost_per_pkg = round(inventory_value / tot_inv, 4) if tot_inv > 0 else 0.0
 
-        # Ship monthly cohorts → build demand by stage
+        # Ship monthly cohorts → demand by stage
         for c in monthly_cohorts:
             age = m - c["start"] + 1
             if   age <= c["s1_limit"]:
@@ -218,20 +225,16 @@ def run_simulation(p):
             elif age <= c["s1_limit"] + 6:
                 s = 3
             else:
-                continue  # finished lifecycle
+                continue
             ship_mon_demand[s] += c["count"]
             c["count"]  = int(round(c["count"] * (1 - p["churn_rate"])))
 
-        # Ship prepaid cohorts → build demand by stage (recognition limited by fill later)
-        eligible_prepaid = []  # for deferred reduction allocation
-        total_prepaid_planned = 0
+        # Ship prepaid cohorts → demand by stage
         for c in prepaid_cohorts:
             age = m - c["start"] + 1
             if 1 <= age <= 9:
                 s = min(1 + (age-1)//3, 3)
                 ship_pre_demand[s] += c["count"]
-                eligible_prepaid.append(c)
-                total_prepaid_planned += c["count"]
 
         # Fill by stage with stockout protection (prepaid priority)
         ship_mon_filled = {1:0,2:0,3:0}
@@ -250,7 +253,7 @@ def run_simulation(p):
             ship_mon_filled[s] = filled_mon
             inventory[s] -= (filled_pre + filled_mon)
 
-        # Reorder logic (use demand, not filled, to avoid under-ordering)
+        # Reorder logic (use demand to set threshold)
         exp_demand = {s: ship_mon_demand[s] + ship_pre_demand[s] for s in (1,2,3)}
         for s in (1, 2, 3):
             fut = exp_demand[s] * p["lead_time"]
@@ -258,45 +261,42 @@ def run_simulation(p):
             if inventory[s] <= thr:
                 cost = p["reorder_cost"][s]
                 pending.append((m + p["lead_time"], s, p["reorder_qty"], cost))
-                reorder_cost += cost
+                reorder_cost = q2(reorder_cost + cost)
                 reorder_events.append(f"S{s}")
-                inventory_transit_value += cost
+                inventory_transit_value = q2(inventory_transit_value + cost)
 
         # Financial calculations (recognize revenue only for filled units)
         total_ship_filled = sum(ship_mon_filled.values()) + sum(ship_pre_filled.values())
-        cogs_mon   = sum(ship_mon_filled.values()) * cost_per_pkg
-        cogs_pre   = sum(ship_pre_filled.values()) * cost_per_pkg
-        total_cogs = cogs_mon + cogs_pre
-        inventory_value -= total_cogs  # relieve inventory at average cost
 
-        rev_mon    = sum(ship_mon_filled.values()) * p["monthly_price"]
-        rev_pre    = sum(ship_pre_filled.values()) * monthly_amt
-        total_rev  = rev_mon + rev_pre
-        cac        = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
-        shipping_exp  = total_ship_filled * p["shipping_cost_pkg"]
-        gross      = total_rev - total_cogs
-        op_expenses = cac + shipping_exp
-        op_inc     = gross - op_expenses  # EBIT
+        rev_mon    = q2(sum(ship_mon_filled.values()) * p["monthly_price"])
+        rev_pre    = q2(sum(ship_pre_filled.values()) * monthly_amt)
+        total_rev  = q2(rev_mon + rev_pre)
 
-        # Deferred revenue: reduce only by prepaid filled this month
-        prepaid_fill_total = sum(ship_pre_filled.values())
-        ratio = (prepaid_fill_total / total_prepaid_planned) if total_prepaid_planned > 0 else 0.0
-        for c in eligible_prepaid:
-            c["deferred"] -= c["count"] * monthly_amt * ratio
-        deferred_bal    = sum(c["deferred"] for c in prepaid_cohorts)
-        def_change      = deferred_bal - prev_def_bal
-        prev_def_bal    = deferred_bal
+        cogs_mon   = q2(sum(ship_mon_filled.values()) * cost_per_pkg)
+        cogs_pre   = q2(sum(ship_pre_filled.values()) * cost_per_pkg)
+        total_cogs = q2(cogs_mon + cogs_pre)
+        inventory_value = q2(inventory_value - total_cogs)  # relieve inventory
 
-        # Taxes: accrue monthly; optionally pay now
-        tax_expense     = max(op_inc, 0) * tax_rate
-        taxes_paid_now  = tax_expense if pay_taxes_now else 0.0
-        taxes_payable   = taxes_payable + tax_expense - taxes_paid_now
-        net_inc_after_tax = op_inc - tax_expense
+        shipping_exp  = q2(total_ship_filled * p["shipping_cost_pkg"])
+        cac           = q2(new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"])
+        gross         = q2(total_rev - total_cogs)
+        op_expenses   = q2(cac + shipping_exp)
+        op_inc        = q2(gross - op_expenses)
 
-        # Cash flow (operating): revenue cash assumed immediate for monthly;
-        # prepaid cash shows up via +∆Deferred; inventory purchases are operating (US GAAP)
-        net_cash = total_rev - op_expenses - taxes_paid_now - reorder_cost + def_change
-        cash    += net_cash
+        # Deferred revenue: reduce exactly by recognized prepaid revenue
+        deferred_bal  = q2(deferred_bal - rev_pre)
+        def_change    = q2(deferred_bal - prev_def_bal)
+        prev_def_bal  = deferred_bal
+
+        # Taxes
+        tax_expense     = q2(max(op_inc, 0) * tax_rate)
+        taxes_paid_now  = q2(tax_expense) if pay_taxes_now else q2(0.0)
+        taxes_payable   = q2(taxes_payable + tax_expense - taxes_paid_now)
+        net_inc_after_tax = q2(op_inc - tax_expense)
+
+        # Operating cash flow: revenue cash (monthly immediate, prepaid via Δdeferred)
+        net_cash = q2(total_rev - op_expenses - taxes_paid_now - reorder_cost + def_change)
+        cash     = q2(cash + net_cash)
 
         subscribers_total = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
         prepaid_total     = sum(c["count"] for c in prepaid_cohorts)
@@ -314,25 +314,25 @@ def run_simulation(p):
             "Inv S1":                 inventory[1],
             "Inv S2":                 inventory[2],
             "Inv S3":                 inventory[3],
-            "Inventory Value":        round(inventory_value, 2),
-            "Transit Value":          round(inventory_transit_value, 2),
+            "Inventory Value":        inventory_value,
+            "Transit Value":          inventory_transit_value,
             "Reorder Cost":           reorder_cost,
             "Reorder Stages":         ", ".join(reorder_events) or "-",
-            "Monthly Revenue":        round(rev_mon,2),
-            "Prepaid Rev Recognized": round(rev_pre,2),
-            "Total Revenue":          round(total_rev,2),
-            "Total COGS":             round(total_cogs,2),
-            "Gross Profit":           round(gross,2),
-            "Operating Expenses":     round(op_expenses,2),
-            "Operating Income":       round(op_inc,2),
-            "Tax Expense":            round(tax_expense,2),
-            "Net Income":             round(net_inc_after_tax,2),  # after-tax
-            "CAC":                    round(cac,2),
-            "Shipping Exp":           round(shipping_exp,2),
-            "Net Cash Flow":          round(net_cash,2),
-            "Cash Balance":           round(cash,2),
-            "Taxes Payable":          round(taxes_payable,2),
-            "Deferred Rev Balance":   round(deferred_bal,2),
+            "Monthly Revenue":        rev_mon,
+            "Prepaid Rev Recognized": rev_pre,
+            "Total Revenue":          total_rev,
+            "Total COGS":             total_cogs,
+            "Gross Profit":           gross,
+            "Operating Expenses":     op_expenses,
+            "Operating Income":       op_inc,
+            "Tax Expense":            tax_expense,
+            "Net Income":             net_inc_after_tax,  # after-tax
+            "CAC":                    cac,
+            "Shipping Exp":           shipping_exp,
+            "Net Cash Flow":          net_cash,
+            "Cash Balance":           cash,
+            "Taxes Payable":          taxes_payable,
+            "Deferred Rev Balance":   deferred_bal,
             "Total Shipments":        total_ship_filled,
             "Total Subscribers":      subscribers_total,
             "Total Prepaid Subs":     prepaid_total,
@@ -495,16 +495,16 @@ with st.expander("📈 Monthly Cash Flow Statement"):
              .format(fmt_flt)
     )
 
-# All calculation methods (updated for GAAP tweaks)
+# All calculation methods (updated)
 with st.expander("📋 All Calculation Methods"):
     st.markdown(r"""
     ### Revenue Recognition
     - **Monthly subscriptions**: revenue recognized when packs ship (no ship → no revenue).
-    - **Prepaid subscriptions**: cash received upfront (flows via **+ΔDeferred**); revenue recognized monthly as shipped; **Deferred Revenue** reduced only for shipped prepaid packs.
+    - **Prepaid subscriptions**: cash received upfront (flows via **+ΔDeferred**); revenue recognized monthly as shipped; **Deferred Revenue** reduced by prepaid revenue recognized this month.
 
     ### Inventory & COGS
     - **Inventory**: capitalized at cost when ordered (in-transit), then moved on-hand on arrival.
-    - **COGS**: weighted-average cost per on-hand pack × packs actually shipped.
+    - **COGS**: weighted-average cost per on-hand pack × packs actually shipped. Average cost stabilized to 4 decimals.
 
     ### Operating Expenses
     - **CAC** expensed as incurred.
@@ -515,7 +515,8 @@ with st.expander("📋 All Calculation Methods"):
     - **Taxes Payable** increases by Tax Expense and decreases by any taxes paid (if enabled).
 
     ### Cash Flow (Operating)
-    - **Operating Cash Flow** = Revenue cash (assumed immediate) − CAC − Shipping − Inventory purchases − Taxes Paid + **ΔDeferred Revenue**.
+    - **Operating Cash Flow** = Monthly revenue cash − CAC − Shipping − Inventory purchases − Taxes Paid + **ΔDeferred Revenue**.
+    - Reorders reduce cash when ordered; inventory value increases when arriving (in-transit → on-hand).
 
     ### Equity & Retained Earnings
     - **Paid-in Capital**: initial financing.
