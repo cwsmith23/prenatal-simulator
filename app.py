@@ -531,7 +531,7 @@ with st.expander("📋 All Calculation Methods"):
     - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
 
-# ─── Quick Print & Download ──────────────────────────────────────────────────
+# ─── Quick Print & Download (Annual IS first, then 12-month BS; larger fonts) ───
 settings_map = {
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
@@ -566,9 +566,24 @@ settings_html = dict_to_html_table(_settings, settings_map | {
     "start_month_3mo_view": "Start Month (3-Month BS View)"
 })
 
-monthly_html = display_df.to_html(index=True, border=0)
+# --- Build HTML sections for printing (12-month BS; Annual IS comes first) ---
+monthly_html   = display_df.to_html(index=True, border=0)
 annual_is_html = annual_is_df.to_html(index=True, border=0)
-bs3_html = df3.to_html(index=False, border=0)
+
+bs12_order = [
+    "Cash Balance",
+    "Inventory Value",
+    "Total Current Assets",
+    "Unearned Revenue",
+    "Taxes Payable",
+    "Total Liabilities",
+    "Paid-in Capital",
+    "Retained Earnings",
+    "Total Equity",
+    "Total L&E",
+    "Δ (Assets − L&E)"
+]
+bs12_html = bs_df[bs12_order].to_html(index=True, border=0)
 
 generated_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
 print_doc = f"""<!doctype html>
@@ -578,16 +593,38 @@ print_doc = f"""<!doctype html>
   <title>BareBump – Quick Report</title>
   <style>
     * {{ box-sizing: border-box; }}
-    body {{ font-family: Arial, sans-serif; padding: 24px; color: #111; }}
-    h1, h2 {{ margin: 0 0 8px; }}
-    .meta {{ margin-bottom: 16px; color: #666; }}
-    table {{ border-collapse: collapse; width: 100%; margin: 8px 0 24px; table-layout: auto; }}
-    th, td {{ border: 1px solid #ddd; padding: 8px; font-size: 12px; text-align: left; vertical-align: top; }}
-    th {{ background: #f6f6f6; }}
+    body {{
+      font-family: Arial, sans-serif;
+      padding: 24px;
+      color: #111;
+      font-size: 14px; /* bigger base font */
+    }}
+    h1 {{ font-size: 26px; margin-bottom: 4px; }}
+    h2 {{ font-size: 20px; margin-top: 24px; margin-bottom: 6px; }}
+    table {{
+      border-collapse: collapse;
+      width: 100%;
+      margin: 8px 0 24px;
+      table-layout: auto;
+      font-size: 13px; /* readable but compact */
+    }}
+    th, td {{
+      border: 1px solid #ddd;
+      padding: 6px 8px; /* tighter padding to fit page */
+      text-align: left;
+      vertical-align: top;
+    }}
+    th {{ background: #f6f6f6; font-weight: bold; }}
     tr {{ page-break-inside: avoid; }}
     .pagebreak {{ page-break-before: always; }}
-    @media print {{ .noprint {{ display: none !important; }} body {{ padding: 0; }} }}
-    .header {{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px; }}
+    @media print {{
+      .noprint {{ display: none !important; }}
+      body {{ padding: 0; }}
+      table {{ font-size: 12px; }} /* slight shrink on print for fit */
+    }}
+    .header {{
+      display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px;
+    }}
     .small {{ font-size: 12px; color: #555; }}
   </style>
 </head>
@@ -596,22 +633,30 @@ print_doc = f"""<!doctype html>
     <h1>BareBump – Quick Report</h1>
     <div class="small">Generated: {generated_ts}</div>
   </div>
+
   <h2>Simulation Settings</h2>
   {settings_html}
+
   <div class="pagebreak"></div>
   <h2>Monthly Simulation Details</h2>
   {monthly_html}
-  <div class="pagebreak"></div>
-  <h2>Balance Sheet (3-Month View)</h2>
-  {bs3_html}
+
   <div class="pagebreak"></div>
   <h2>Annual Income Statement</h2>
   {annual_is_html}
-  <div class="noprint" style="margin-top:16px;"><button onclick="window.print()">Print</button></div>
+
+  <div class="pagebreak"></div>
+  <h2>Balance Sheet (Months 1–12)</h2>
+  {bs12_html}
+
+  <div class="noprint" style="margin-top:16px;">
+    <button onclick="window.print()">Print</button>
+  </div>
 </body>
 </html>"""
 
-if st.button("🖨️ Quick Print (Settings + Monthly + 3-Mo BS + Annual IS)"):
+# Button and download (labels updated)
+if st.button("🖨️ Quick Print (Settings + Monthly + Annual IS + 12-Mo BS)"):
     components.html(
         f"""
         <script>
