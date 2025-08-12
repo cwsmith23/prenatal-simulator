@@ -566,8 +566,7 @@ settings_html = dict_to_html_table(_settings, settings_map | {
     "start_month_3mo_view": "Start Month (3-Month BS View)"
 })
 
-# --- Build HTML sections for printing (12-month BS; Annual IS comes first) ---
-# Helpers to format numbers with commas for HTML tables
+# ---------- Build HTML sections (with comma formatting + fit-to-page Monthly) ----------
 def _fmt_int(x):
     try:
         return "" if pd.isna(x) else f"{int(x):,}"
@@ -580,17 +579,18 @@ def _fmt_flt(x):
     except Exception:
         return x
 
-# Monthly Simulation Details (detect ints/floats automatically)
+# Monthly Simulation Details
 _int_cols  = display_df.select_dtypes(include=["int", "int64"]).columns
 _flt_cols  = display_df.select_dtypes(include=["float", "float64"]).columns
 _monthly_formatters = {**{c: _fmt_int for c in _int_cols}, **{c: _fmt_flt for c in _flt_cols}}
-monthly_html = display_df.to_html(index=True, border=0, formatters=_monthly_formatters)
+monthly_html_core = display_df.to_html(index=True, border=0, formatters=_monthly_formatters)
+monthly_html = f'<div class="monthly">{monthly_html_core}</div>'  # wrapper to style smaller/tighter
 
-# Annual Income Statement (all numeric → 2-decimals with commas)
+# Annual Income Statement
 _annual_formatters = {c: _fmt_flt for c in annual_is_df.columns}
 annual_is_html = annual_is_df.to_html(index=True, border=0, formatters=_annual_formatters)
 
-# 12-month Balance Sheet (ordered columns)
+# 12-month Balance Sheet
 bs12_order = [
     "Cash Balance",
     "Inventory Value",
@@ -608,6 +608,9 @@ _bs12 = bs_df[bs12_order]
 _bs12_formatters = {c: _fmt_flt for c in _bs12.columns}
 bs12_html = _bs12.to_html(index=True, border=0, formatters=_bs12_formatters)
 
+# Optional: set to True for wider, cleaner print layout
+force_landscape = False
+page_size_css = "@page { size: Letter landscape; margin: 0.5in; }" if force_landscape else "@page { margin: 0.5in; }"
 
 generated_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
 print_doc = f"""<!doctype html>
@@ -616,15 +619,18 @@ print_doc = f"""<!doctype html>
   <meta charset="utf-8">
   <title>BareBump – Quick Report</title>
   <style>
+    {page_size_css}
     * {{ box-sizing: border-box; }}
     body {{
       font-family: Arial, sans-serif;
       padding: 24px;
       color: #111;
-      font-size: 14px; /* bigger base font */
+      font-size: 14px; /* base font bigger */
     }}
     h1 {{ font-size: 26px; margin-bottom: 4px; }}
     h2 {{ font-size: 20px; margin-top: 24px; margin-bottom: 6px; }}
+
+    /* Default table look */
     table {{
       border-collapse: collapse;
       width: 100%;
@@ -634,17 +640,27 @@ print_doc = f"""<!doctype html>
     }}
     th, td {{
       border: 1px solid #ddd;
-      padding: 6px 8px; /* tighter padding to fit page */
+      padding: 6px 8px;
       text-align: left;
       vertical-align: top;
+      white-space: nowrap; /* keep numbers on one line */
     }}
-    th {{ background: #f6f6f6; font-weight: bold; }}
+    th {{ background: #f6f6f6; font-weight: bold; white-space: normal; }}
+
+    /* Tighter, smaller Monthly table to keep width in check */
+    .monthly table {{ table-layout: fixed; font-size: 12px; }}
+    .monthly th, .monthly td {{ padding: 4px 6px; }}
+    .monthly th {{ white-space: normal; }}   /* allow header wrapping */
+    .monthly td {{ white-space: nowrap; }}   /* keep numbers compact */
+    .monthly th, .monthly td {{ overflow: hidden; text-overflow: ellipsis; }}
+
     tr {{ page-break-inside: avoid; }}
     .pagebreak {{ page-break-before: always; }}
     @media print {{
       .noprint {{ display: none !important; }}
       body {{ padding: 0; }}
-      table {{ font-size: 12px; }} /* slight shrink on print for fit */
+      table {{ font-size: 12px; }}            /* slight global shrink on print */
+      .monthly table {{ font-size: 10.5px; }} /* extra shrink for Monthly only */
     }}
     .header {{
       display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px;
