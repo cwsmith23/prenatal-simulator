@@ -529,6 +529,7 @@ fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
 
 # ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
+# ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
 display_df = sim_df.drop(columns=["Transit Value"])
 display_cols = [
     "New Monthly Subs", "New Prepaid Subs",
@@ -548,10 +549,11 @@ display_cols = [
     "Sales Tax Collected", "Sales Tax Remitted", "Sales Tax Payable",
     "Net Cash Flow",
     "Distribution", "Cumulative Distributions",
-    "Cash Balance", "Deferred Rev Balance", "Taxes Payable"
+    "Cash Balance", "Deferred Rev Balance"
 ]
 display_cols = [c for c in display_cols if c in display_df.columns]
 display_df = display_df[display_cols]
+
 
 st.subheader("Monthly Simulation Details")
 st.dataframe(
@@ -634,22 +636,32 @@ with st.expander("📈 Monthly Cash Flow Statement"):
         cf_df.style
              .format(fmt_flt)
     )
-
+    
 # ─── Member Distributions Summary ─────────────────────────────────────────────
 st.subheader("Member Distributions")
-dist_view = sim_df[["Distribution", "Cumulative Distributions"]].copy()
-dist_view.index.name = "Month"
-dist_paid = dist_view[dist_view["Distribution"] > 0]
+
+# Build view limited to months with a distribution
+cols_needed = ["Distribution", "Cumulative Distributions", "Tax Expense", "Taxes Payable"]
+cols_available = [c for c in cols_needed if c in sim_df.columns]
+dist_paid = sim_df.loc[sim_df["Distribution"] > 0, cols_available].copy()
 
 if dist_paid.empty:
     st.info("No member distributions occurred in the simulated period.")
 else:
-    st.dataframe(
-        dist_paid.style.format({"Distribution": fmt_flt, "Cumulative Distributions": fmt_flt})
-    )
+    # Rename and format
+    rename_map = {"Taxes Payable": "Taxes Owed (EOM)", "Tax Expense": "Tax Expense (This Month)"}
+    dist_paid.rename(columns={k: v for k, v in rename_map.items() if k in dist_paid.columns}, inplace=True)
 
-total_distributions = float(dist_view["Distribution"].sum())
+    fmt_map = {}
+    for c in dist_paid.columns:
+        fmt_map[c] = "{:,.2f}"
+
+    st.dataframe(dist_paid.style.format(fmt_map))
+
+# Metrics
+total_distributions = float(sim_df["Distribution"].sum()) if "Distribution" in sim_df else 0.0
 st.metric("Total Distributions to Date", f"${total_distributions:,.2f}")
+
 
 # All calculation methods
 with st.expander("📋 All Calculation Methods"):
