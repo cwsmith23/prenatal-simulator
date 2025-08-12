@@ -530,7 +530,7 @@ with st.expander("📋 All Calculation Methods"):
     - **Equity** = Paid-in Capital + Retained Earnings.
     - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
-# ─── Quick Print & Download (Annual IS first, then 12-month BS; taller rows + 1/8" print margins) ───
+# ─── Quick Print & Download (Annual IS first, then 12-month BS; taller rows + 1/8" margins; hide button on print) ───
 settings_map = {
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
@@ -578,7 +578,7 @@ def _fmt_flt(x):
     except Exception:
         return x
 
-# Monthly Simulation Details (wrap so we can scale for print only)
+# Monthly Simulation Details (wrapped so we can scale for print only)
 _int_cols  = display_df.select_dtypes(include=["int", "int64"]).columns
 _flt_cols  = display_df.select_dtypes(include=["float", "float64"]).columns
 _monthly_formatters = {**{c: _fmt_int for c in _int_cols}, **{c: _fmt_flt for c in _flt_cols}}
@@ -651,8 +651,13 @@ print_doc = f"""<!doctype html>
 
     /* Make sure the Monthly table always fits on page width when printing */
     .monthly-wrap table {{ font-size: 12.25px; }}
+
+    tr {{ page-break-inside: avoid; }}
+    .pagebreak {{ page-break-before: always; }}
+
     @media print {{
       body {{ padding: 0; }}      /* rely on @page margins when printing */
+      .noprint {{ display: none !important; }}  /* ← hide the print button on paper */
       table {{ font-size: 12.25px; }}
       th, td {{ padding: 10px 8px; line-height: 1.45; }}
       .monthly-wrap {{
@@ -663,9 +668,6 @@ print_doc = f"""<!doctype html>
       }}
       .monthly-wrap table {{ font-size: 11.25px; }}
     }}
-
-    tr {{ page-break-inside: avoid; }}
-    .pagebreak {{ page-break-before: always; }}
 
     .header {{
       display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px;
