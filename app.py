@@ -131,6 +131,9 @@ def run_simulation(p):
     deferred_bal = q2(p["initial_prepaid"] * monthly_amt * 9)
     prev_def_bal = deferred_bal
 
+    # ⬇️ Add this: you already collected the prepaid cash at t=0
+    cash = q2(cash + deferred_bal)
+
     pending      = []  # (arrive_month, stage, qty, cost)
     monthly_cohorts = []
     prepaid_cohorts = []
