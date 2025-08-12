@@ -530,7 +530,7 @@ with st.expander("📋 All Calculation Methods"):
     - **Equity** = Paid-in Capital + Retained Earnings.
     - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
-# ─── Quick Print & Download (Annual IS first, then 12-month BS; larger row height + zero margins) ───
+# ─── Quick Print & Download (Annual IS first, then 12-month BS; taller rows + small print margins) ───
 settings_map = {
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
@@ -606,9 +606,9 @@ _bs12 = bs_df[bs12_order]
 _bs12_formatters = {c: _fmt_flt for c in _bs12.columns}
 bs12_html = _bs12.to_html(index=True, border=0, formatters=_bs12_formatters)
 
-# Zero print margins + landscape for width
+# Small print margins (¼ inch) + landscape for width
 force_landscape = True
-page_size_css = "@page { size: Letter landscape; margin: 0; }" if force_landscape else "@page { margin: 0; }"
+page_size_css = "@page { size: Letter landscape; margin: 0.25in; }" if force_landscape else "@page { margin: 0.25in; }"
 
 generated_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
 print_doc = f"""<!doctype html>
@@ -621,12 +621,12 @@ print_doc = f"""<!doctype html>
     * {{ box-sizing: border-box; }}
     body {{
       font-family: Arial, sans-serif;
-      padding: 24px;              /* screen view padding */
+      padding: 24px;              /* on-screen padding only */
       color: #111;
       font-size: 14px;
     }}
-    h1 {{ font-size: 26px; margin-bottom: 4px; }}
-    h2 {{ font-size: 20px; margin-top: 24px; margin-bottom: 8px; }}
+    h1 {{ font-size: 26px; margin-bottom: 6px; }}
+    h2 {{ font-size: 20px; margin-top: 24px; margin-bottom: 10px; }}
 
     table {{
       border-collapse: collapse;
@@ -638,8 +638,8 @@ print_doc = f"""<!doctype html>
     }}
     th, td {{
       border: 1px solid #ddd;
-      padding: 10px 10px;         /* ↑ larger vertical padding for taller rows */
-      line-height: 1.4;           /* ↑ taller row height */
+      padding: 12px 10px;         /* taller rows */
+      line-height: 1.5;           /* more vertical space */
       text-align: left;
       vertical-align: middle;
       white-space: nowrap;        /* keep numbers on one line */
@@ -652,12 +652,9 @@ print_doc = f"""<!doctype html>
     .pagebreak {{ page-break-before: always; }}
 
     @media print {{
-      body {{ padding: 0; }}      /* zero inner margins when printing */
-      table {{ font-size: 12px; }}
-      th, td {{
-        padding: 12px 10px;       /* even taller rows on print */
-        line-height: 1.5;
-      }}
+      body {{ padding: 0; }}      /* rely on @page margins when printing */
+      table {{ font-size: 12.5px; }}
+      th, td {{ padding: 12px 10px; line-height: 1.5; }}
     }}
 
     .header {{
