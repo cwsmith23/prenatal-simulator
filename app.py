@@ -370,7 +370,7 @@ def run_simulation(p):
         op_expenses   = q2(cac + shipping_exp)
         op_inc        = q2(gross - op_expenses)
 
-        # Deferred revenue: reduce exactly by recognized prepaid revenue
+        # Deferred revenue: reduce by recognized prepaid revenue
         deferred_bal  = q2(deferred_bal - rev_pre)
         def_change    = q2(deferred_bal - prev_def_bal)
         prev_def_bal  = deferred_bal
@@ -394,7 +394,7 @@ def run_simulation(p):
                       + sales_tax_collected - sales_tax_remitted)
         cash     = q2(cash + net_cash)
 
-        # CASH SWEEP / OWNER DISTRIBUTIONS (buffers + toggle) — includes 50% DR slider
+        # CASH SWEEP / OWNER DISTRIBUTIONS (buffers + toggle) — includes deferred % reserve
         distribution = q2(0.0)
         if p["enable_cash_sweep"]:
             pending_costs = q2(sum(cost for (arr_m, s_, qty_, cost) in pending))
@@ -622,37 +622,72 @@ st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 st.subheader("Annual Income Statement")
 st.dataframe(annual_is_df.style.format(fmt_flt))
 
-# ─── Member Distributions — Owner Take-Home View ─────────────────────────────
+# ─── 12-Month Balance Sheet (RESTORED) ───────────────────────────────────────
+with st.expander("📊 Balance Sheet (Months 1–12)"):
+    bs_order = [
+        "Cash Balance",
+        "Inventory Value",
+        "Total Current Assets",
+        "Unearned Revenue",
+        "Taxes Payable",
+        "Sales Tax Payable",
+        "Total Liabilities",
+        "Paid-in Capital",
+        "Retained Earnings",
+        "Member Distributions",
+        "Total Equity",
+        "Total L&E",
+        "Δ (Assets − L&E)"
+    ]
+    st.dataframe(
+        bs_df[bs_order]
+            .style
+            .format(fmt_flt)
+    )
+
+# ─── Owner Distributions — Take-Home (est.) ──────────────────────────────────
 st.subheader("Owner Distributions — Take-Home (est.)")
 
 if "Distribution" in sim_df:
-    dist_paid = sim_df.loc[sim_df["Distribution"] > 0, ["Distribution"]].copy()
+    base_dist = sim_df.loc[sim_df["Distribution"] > 0, ["Distribution"]].copy()
 else:
-    dist_paid = pd.DataFrame(columns=["Distribution"])
+    base_dist = pd.DataFrame(columns=["Distribution"])
 
-if dist_paid.empty:
+if base_dist.empty:
     st.info("No member distributions occurred in the simulated period.")
+    total_owner_dist = 0.0
+    total_owner_take = 0.0
 else:
-    dist_paid["Owner Distribution"] = dist_paid["Distribution"] * owner_equity_share
-    dist_paid["Est Owner Tax on Dist"] = dist_paid["Owner Distribution"] * owner_eff_tax_rate
-    dist_paid["Owner Take-Home"] = dist_paid["Owner Distribution"] - dist_paid["Est Owner Tax on Dist"]
-    dist_paid["Cumulative Owner Take-Home"] = dist_paid["Owner Take-Home"].cumsum()
+    # Exact five columns requested
+    base_dist["Owner Distribution"] = base_dist["Distribution"] * owner_equity_share
+    base_dist["Est. Tax"] = base_dist["Owner Distribution"] * owner_eff_tax_rate
+    base_dist["Take-Home"] = base_dist["Owner Distribution"] - base_dist["Est. Tax"]
+    base_dist["Cumulative Distribution"] = base_dist["Owner Distribution"].cumsum()
+    base_dist["Cumulative Take-Home"] = base_dist["Take-Home"].cumsum()
 
+    show_cols = [
+        "Owner Distribution", "Est. Tax", "Take-Home",
+        "Cumulative Distribution", "Cumulative Take-Home"
+    ]
     st.dataframe(
-        dist_paid.style.format({
-            "Distribution": "{:,.2f}",
+        base_dist[show_cols].style.format({
             "Owner Distribution": "{:,.2f}",
-            "Est Owner Tax on Dist": "{:,.2f}",
-            "Owner Take-Home": "{:,.2f}",
-            "Cumulative Owner Take-Home": "{:,.2f}",
+            "Est. Tax": "{:,.2f}",
+            "Take-Home": "{:,.2f}",
+            "Cumulative Distribution": "{:,.2f}",
+            "Cumulative Take-Home": "{:,.2f}",
         })
     )
 
-# Metrics
-total_distributions = float(sim_df["Distribution"].sum()) if "Distribution" in sim_df else 0.0
-st.metric("Total Distributions to Date", f"${total_distributions:,.2f}")
-if not dist_paid.empty:
-    st.metric("Owner Take-Home to Date (est.)", f"${dist_paid['Owner Take-Home'].sum():,.2f}")
+    total_owner_dist = float(base_dist["Owner Distribution"].sum())
+    total_owner_take = float(base_dist["Take-Home"].sum())
+
+# Totals side-by-side under table
+c1, c2 = st.columns(2)
+with c1:
+    st.metric("Total Owner Distribution", f"${total_owner_dist:,.2f}")
+with c2:
+    st.metric("Total Owner Take-Home", f"${total_owner_take:,.2f}")
 
 # ─── All calculation methods ─────────────────────────────────────────────────
 with st.expander("📋 All Calculation Methods"):
@@ -684,7 +719,7 @@ with st.expander("📋 All Calculation Methods"):
     - **Paid-in Capital**: initial financing.
     - **Retained Earnings**: cumulative **after-tax** income.
     - **Member Distributions**: owner draws (cash sweep), reduce equity (not expenses).
-    - **Sweep buffers**: pending & forecasted POs, next sales-tax remit, **{restricted %} of deferred revenue**, and minimum cash reserve.
+    - **Sweep buffers**: pending & forecasted POs, next sales-tax remit, a reserve of deferred revenue, and minimum cash reserve.
     - **Owner take-home (est.)**: Owner Distribution × (1 − Owner personal effective tax rate).
 
     ### Balance Sheet Identity
@@ -692,9 +727,9 @@ with st.expander("📋 All Calculation Methods"):
     - **Liabilities** = Unearned Revenue + Income Taxes Payable + Sales Tax Payable.
     - **Equity** = Paid-in Capital + Retained Earnings − Member Distributions.
     - Check column: **Δ(Assets − L&E)** should be 0.00.
-    """.replace("{restricted %}", f"{restricted_deferred_pct:.0%}"))
+    """)
 
-# ─── Quick Print & Download (w/ Owner Take-Home, Annual IS first, then 12-mo BS) ───
+# ─── Quick Print & Download (includes Owner Take-Home + 12-mo BS) ────────────
 settings_map = {
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
@@ -730,7 +765,6 @@ settings_map = {
 _settings = {k: params.get(k) for k in settings_map.keys()}
 for k in ("initial_inventory", "reorder_cost", "start_stage_dist", "ship1_dist"):
     _settings[k] = fmt_nested(_settings[k])
-# pretty format a few
 _settings["effective_tax_rate"] = f"{params['effective_tax_rate']:.2%}"
 _settings["pay_taxes_now"] = "Yes" if params["pay_taxes_now"] else "No"
 _settings["collect_sales_tax"] = "Yes" if params["collect_sales_tax"] else "No"
@@ -766,10 +800,11 @@ monthly_html = f'<div class="monthly-wrap">{monthly_html_core}</div>'
 _annual_formatters = {c: _fmt_flt for c in annual_is_df.columns}
 annual_is_html = annual_is_df.to_html(index=True, border=0, formatters=_annual_formatters)
 
-# Owner Distributions (print)
-if not dist_paid.empty:
-    owner_print_df = dist_paid[[
-        "Distribution", "Owner Distribution", "Est Owner Tax on Dist", "Owner Take-Home", "Cumulative Owner Take-Home"
+# Owner Distributions (print) — match the five columns
+if not base_dist.empty:
+    owner_print_df = base_dist[[
+        "Owner Distribution", "Est. Tax", "Take-Home",
+        "Cumulative Distribution", "Cumulative Take-Home"
     ]]
     owner_print_html = owner_print_df.to_html(index=True, border=0, formatters={c:_fmt_flt for c in owner_print_df.columns})
 else:
