@@ -108,7 +108,7 @@ init_unit_cost = (params["initial_inventory_cost"] / total_init_units) if total_
 reorder_unit_costs = {s: (params["reorder_cost"][s] / params["reorder_qty"] if params["reorder_qty"] else 0)
                       for s in (1,2,3)}
 st.caption(
-    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack | "
+    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack  "
 )
 
 # ─── Core Simulation ─────────────────────────────────────────────────────────
