@@ -15,13 +15,11 @@ def allocate_with_remainder(total, fractions):
         alloc = math.floor(raw)
         allocations[k] = alloc
         remainders.append((raw - alloc, k))
-
     leftover = total - sum(allocations.values())
     remainders.sort(reverse=True)
     for i in range(leftover):
         _, key = remainders[i]
         allocations[key] += 1
-
     return allocations
 
 def fmt_val(v):
@@ -32,7 +30,6 @@ def fmt_val(v):
     return str(v)
 
 def dict_to_html_table(d: dict, title_map: dict = None) -> str:
-    """Render a simple 2-col HTML table from a dict."""
     rows = []
     for k, v in d.items():
         label = title_map.get(k, k) if title_map else k
@@ -44,10 +41,9 @@ def fmt_nested(d):
         return fmt_val(d)
     return ", ".join([f"S{sk}:{fmt_val(sv)}" for sk, sv in d.items()])
 
-
 # ─── App Setup ────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
-st.title("BareBump Cash-Flow Simulator & Financials")
+st.title("BareBump Cash-Flow Simulator & Financials (GAAP-aligned)")
 
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
@@ -78,6 +74,7 @@ ship1_2       = st.sidebar.number_input("Pct Ship Stage 2 Initial", 0.0, 1.0, 0.
 ship1_3       = st.sidebar.number_input("Pct Ship Stage 3 Initial", 0.0, 1.0, 0.05, format="%.2f")
 months        = st.sidebar.number_input("Simulation Months", 1, 36, 12)
 tax_rate      = st.sidebar.slider("Income Tax Rate", 0.0, 1.0, 0.21, step=0.01, format="%.2f")
+pay_taxes_now = st.sidebar.checkbox("Pay Taxes Monthly (otherwise accrue to Taxes Payable)", value=False)
 
 params = {
     "monthly_price":          monthly_price,
@@ -98,26 +95,39 @@ params = {
     "reorder_safety":         safety,
     "start_stage_dist":       {1: st1, 2: st2, 3: st3},
     "ship1_dist":             {1: ship1_1, 2: ship1_2, 3: ship1_3},
-    "simulation_months":      months
+    "simulation_months":      months,
 }
+
+# Unit cost sanity panel
+total_init_units = sum(params["initial_inventory"].values())
+init_unit_cost = (params["initial_inventory_cost"] / total_init_units) if total_init_units else 0
+reorder_unit_costs = {s: (params["reorder_cost"][s] / params["reorder_qty"] if params["reorder_qty"] else 0)
+                      for s in (1,2,3)}
+st.caption(
+    f"🧮 Unit cost — Initial: ${init_unit_cost:,.2f}/pack | "
+    f"Reorder S1: ${reorder_unit_costs[1]:,.2f}, S2: ${reorder_unit_costs[2]:,.2f}, S3: ${reorder_unit_costs[3]:,.2f}"
+)
 
 # ─── Core Simulation ─────────────────────────────────────────────────────────
 def run_simulation(p):
     total_pkgs = sum(p["initial_inventory"].values())
     if total_pkgs == 0:
         raise ValueError("Initial inventory must be greater than zero.")
-    inventory_value = p["initial_inventory_cost"]
-    inventory       = p["initial_inventory"].copy()
-    inventory_transit_value = 0
+
+    inventory_value = p["initial_inventory_cost"]          # on-hand inventory value
+    inventory       = p["initial_inventory"].copy()        # on-hand units by stage
+    inventory_transit_value = 0                            # in-transit inventory value
     monthly_amt  = p["monthly_price"] * (1 - p["prepaid_discount_rate"])
-    cash         = p["initial_inventory_cost"]  # financing inflow
-    cash        -= p["initial_inventory_cost"]  # initial inventory purchase
+    cash         = p["initial_inventory_cost"]             # equity financing inflow
+    cash        -= p["initial_inventory_cost"]             # initial inventory purchase (operating outflow)
     prev_def_bal = 0
-    pending      = []
+    taxes_payable = 0
+
+    pending      = []  # (arrive_month, stage, qty, cost)
     monthly_cohorts = []
     prepaid_cohorts = []
 
-    # Month 1: seed prepaid
+    # Month 1: seed prepaid (cash comes via ∆deferred in cash flow)
     if p["initial_prepaid"] > 0:
         prepaid_cohorts.append({
             "start":    1,
@@ -172,7 +182,7 @@ def run_simulation(p):
                             "count":    cnt,
                             "s1_limit": lim
                         })
-            # seed new prepaid
+            # seed new prepaid (deferred revenue set; cash realized via ∆deferred)
             if new_pre > 0:
                 prepaid_cohorts.append({
                     "start":    m,
@@ -182,12 +192,11 @@ def run_simulation(p):
 
         # Initialize monthly counters
         reorder_cost   = 0
-        ship_mon       = {1:0,2:0,3:0}
-        ship_pre       = {1:0,2:0,3:0}
-        rev_pre        = 0
         reorder_events = []
+        ship_mon_demand = {1:0,2:0,3:0}  # intended shipments
+        ship_pre_demand = {1:0,2:0,3:0}  # intended shipments
 
-        # Process inventory arrivals
+        # Process inventory arrivals (capitalize to on-hand; reduce transit)
         arrivals = [x for x in pending if x[0] == m]
         for _, s, qty, cost in arrivals:
             inventory[s] += qty
@@ -195,11 +204,11 @@ def run_simulation(p):
             inventory_transit_value -= cost
         pending = [x for x in pending if x[0] > m]
 
-        # Compute current average cost
+        # Compute weighted-average cost per on-hand unit
         tot_inv = sum(inventory.values())
-        cost_per_pkg = inventory_value / tot_inv if tot_inv else 0
+        cost_per_pkg = inventory_value / tot_inv if tot_inv > 0 else 0.0
 
-        # Ship monthly cohorts
+        # Ship monthly cohorts → build demand by stage
         for c in monthly_cohorts:
             age = m - c["start"] + 1
             if   age <= c["s1_limit"]:
@@ -209,26 +218,43 @@ def run_simulation(p):
             elif age <= c["s1_limit"] + 6:
                 s = 3
             else:
-                continue
-            ship_mon[s] += c["count"]
+                continue  # finished lifecycle
+            ship_mon_demand[s] += c["count"]
             c["count"]  = int(round(c["count"] * (1 - p["churn_rate"])))
 
-        # Ship prepaid cohorts
+        # Ship prepaid cohorts → build demand by stage (recognition limited by fill later)
+        eligible_prepaid = []  # for deferred reduction allocation
+        total_prepaid_planned = 0
         for c in prepaid_cohorts:
             age = m - c["start"] + 1
             if 1 <= age <= 9:
                 s = min(1 + (age-1)//3, 3)
-                ship_pre[s] += c["count"]
-                rev_pre     += c["count"] * monthly_amt
-                c["deferred"] -= c["count"] * monthly_amt
+                ship_pre_demand[s] += c["count"]
+                eligible_prepaid.append(c)
+                total_prepaid_planned += c["count"]
 
-        # Reorder logic (correct inventory check)
-        exp = {s: ship_mon[s] + ship_pre[s] for s in (1, 2, 3)}
+        # Fill by stage with stockout protection (prepaid priority)
+        ship_mon_filled = {1:0,2:0,3:0}
+        ship_pre_filled = {1:0,2:0,3:0}
+        backorder_mon   = {1:0,2:0,3:0}
+        backorder_pre   = {1:0,2:0,3:0}
+
+        for s in (1,2,3):
+            available = max(inventory[s], 0)
+            filled_pre = min(ship_pre_demand[s], available)
+            available -= filled_pre
+            filled_mon = min(ship_mon_demand[s], available)
+            backorder_pre[s] = ship_pre_demand[s] - filled_pre
+            backorder_mon[s] = ship_mon_demand[s] - filled_mon
+            ship_pre_filled[s] = filled_pre
+            ship_mon_filled[s] = filled_mon
+            inventory[s] -= (filled_pre + filled_mon)
+
+        # Reorder logic (use demand, not filled, to avoid under-ordering)
+        exp_demand = {s: ship_mon_demand[s] + ship_pre_demand[s] for s in (1,2,3)}
         for s in (1, 2, 3):
-            # deduct shipments from inventory
-            inventory[s] -= exp[s]
-            fut = exp[s] * p["lead_time"]
-            thr = math.ceil((exp[s] + fut) * p["reorder_safety"])
+            fut = exp_demand[s] * p["lead_time"]
+            thr = math.ceil((exp_demand[s] + fut) * p["reorder_safety"])
             if inventory[s] <= thr:
                 cost = p["reorder_cost"][s]
                 pending.append((m + p["lead_time"], s, p["reorder_qty"], cost))
@@ -236,38 +262,55 @@ def run_simulation(p):
                 reorder_events.append(f"S{s}")
                 inventory_transit_value += cost
 
-        # Financial calculations
-        total_ship = sum(exp.values())
-        cogs_mon   = sum(ship_mon.values()) * cost_per_pkg
-        cogs_pre   = sum(ship_pre.values()) * cost_per_pkg
+        # Financial calculations (recognize revenue only for filled units)
+        total_ship_filled = sum(ship_mon_filled.values()) + sum(ship_pre_filled.values())
+        cogs_mon   = sum(ship_mon_filled.values()) * cost_per_pkg
+        cogs_pre   = sum(ship_pre_filled.values()) * cost_per_pkg
         total_cogs = cogs_mon + cogs_pre
-        inventory_value -= total_cogs
+        inventory_value -= total_cogs  # relieve inventory at average cost
 
-        rev_mon    = sum(ship_mon.values()) * p["monthly_price"]
+        rev_mon    = sum(ship_mon_filled.values()) * p["monthly_price"]
+        rev_pre    = sum(ship_pre_filled.values()) * monthly_amt
         total_rev  = rev_mon + rev_pre
         cac        = new_mon * p["cac_new_monthly"] + new_pre * p["cac_new_prepaid"]
-        ship_cost  = total_ship * p["shipping_cost_pkg"]
+        shipping_exp  = total_ship_filled * p["shipping_cost_pkg"]
         gross      = total_rev - total_cogs
-        op_inc     = gross - cac
+        op_expenses = cac + shipping_exp
+        op_inc     = gross - op_expenses  # EBIT
+
+        # Deferred revenue: reduce only by prepaid filled this month
+        prepaid_fill_total = sum(ship_pre_filled.values())
+        ratio = (prepaid_fill_total / total_prepaid_planned) if total_prepaid_planned > 0 else 0.0
+        for c in eligible_prepaid:
+            c["deferred"] -= c["count"] * monthly_amt * ratio
         deferred_bal    = sum(c["deferred"] for c in prepaid_cohorts)
         def_change      = deferred_bal - prev_def_bal
         prev_def_bal    = deferred_bal
-        net_inc         = op_inc - ship_cost
-        cash_from_sales = total_rev
-        cash_expenses   = cac + ship_cost
-        net_cash        = cash_from_sales - cash_expenses - reorder_cost + def_change
-        cash           += net_cash
+
+        # Taxes: accrue monthly; optionally pay now
+        tax_expense     = max(op_inc, 0) * tax_rate
+        taxes_paid_now  = tax_expense if pay_taxes_now else 0.0
+        taxes_payable   = taxes_payable + tax_expense - taxes_paid_now
+        net_inc_after_tax = op_inc - tax_expense
+
+        # Cash flow (operating): revenue cash assumed immediate for monthly;
+        # prepaid cash shows up via +∆Deferred; inventory purchases are operating (US GAAP)
+        net_cash = total_rev - op_expenses - taxes_paid_now - reorder_cost + def_change
+        cash    += net_cash
 
         subscribers_total = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
-        prepaid_total = sum(c["count"] for c in prepaid_cohorts)
+        prepaid_total     = sum(c["count"] for c in prepaid_cohorts)
 
         records.append({
             "Month":                  m,
             "New Monthly Subs":       new_mon,
             "New Prepaid Subs":       new_pre,
-            "Stage 1 Shipped":        ship_mon[1] + ship_pre[1],
-            "Stage 2 Shipped":        ship_mon[2] + ship_pre[2],
-            "Stage 3 Shipped":        ship_mon[3] + ship_pre[3],
+            "Stage 1 Shipped":        ship_mon_filled[1] + ship_pre_filled[1],
+            "Stage 2 Shipped":        ship_mon_filled[2] + ship_pre_filled[2],
+            "Stage 3 Shipped":        ship_mon_filled[3] + ship_pre_filled[3],
+            "Backorder S1":           backorder_mon[1] + backorder_pre[1],
+            "Backorder S2":           backorder_mon[2] + backorder_pre[2],
+            "Backorder S3":           backorder_mon[3] + backorder_pre[3],
             "Inv S1":                 inventory[1],
             "Inv S2":                 inventory[2],
             "Inv S3":                 inventory[3],
@@ -280,14 +323,17 @@ def run_simulation(p):
             "Total Revenue":          round(total_rev,2),
             "Total COGS":             round(total_cogs,2),
             "Gross Profit":           round(gross,2),
+            "Operating Expenses":     round(op_expenses,2),
             "Operating Income":       round(op_inc,2),
+            "Tax Expense":            round(tax_expense,2),
+            "Net Income":             round(net_inc_after_tax,2),  # after-tax
             "CAC":                    round(cac,2),
-            "Shipping Exp":           round(ship_cost,2),
-            "Net Income":             round(net_inc,2),
+            "Shipping Exp":           round(shipping_exp,2),
             "Net Cash Flow":          round(net_cash,2),
             "Cash Balance":           round(cash,2),
+            "Taxes Payable":          round(taxes_payable,2),
             "Deferred Rev Balance":   round(deferred_bal,2),
-            "Total Shipments":        total_ship,
+            "Total Shipments":        total_ship_filled,
             "Total Subscribers":      subscribers_total,
             "Total Prepaid Subs":     prepaid_total,
         })
@@ -295,42 +341,42 @@ def run_simulation(p):
         # Prune expired cohorts
         monthly_cohorts = [
             c for c in monthly_cohorts
-            if c["count"]>0 and (m - c["start"] +1) <= c["s1_limit"]+6
+            if c["count"] > 0 and (m - c["start"] + 1) <= c["s1_limit"] + 6
         ]
         prepaid_cohorts = [
             c for c in prepaid_cohorts
-            if (m - c["start"] +1) < 9
+            if (m - c["start"] + 1) < 9
         ]
 
     return pd.DataFrame(records).set_index("Month")
-
 
 def build_financials(df, p):
     bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
     bs["Inventory Value"]      = df["Inventory Value"] + df["Transit Value"]
     bs["Unearned Revenue"]     = df["Deferred Rev Balance"]
+    bs["Taxes Payable"]        = df["Taxes Payable"]
     bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory Value"]
-    bs["Total Liabilities"]    = bs["Unearned Revenue"]
+    bs["Total Liabilities"]    = bs["Unearned Revenue"] + bs["Taxes Payable"]
     bs["Paid-in Capital"]      = p["initial_inventory_cost"]
-    bs["Retained Earnings"]    = df["Net Income"].cumsum()
+    bs["Retained Earnings"]    = df["Net Income"].cumsum()           # after-tax
     bs["Total Equity"]         = bs["Paid-in Capital"] + bs["Retained Earnings"]
     bs["Total L&E"]            = bs["Total Liabilities"] + bs["Total Equity"]
     bs["Δ (Assets − L&E)"]     = (bs["Total Current Assets"] - bs["Total L&E"]).round(2)
 
-    # Income Statement Year 1
+    # Income Statement (Monthly → Year 1 summary)
     is_df = pd.DataFrame({
-        "Revenue":      df["Total Revenue"],
-        "COGS":         df["Total COGS"],
-        "Gross Profit": df["Gross Profit"],
-        "Op Expenses":  df["CAC"],
-        "Op Income":    df["Operating Income"],
-        "Shipping Expenses": df["Shipping Exp"],
-        "Net Income":   df["Net Income"],
+        "Revenue":            df["Total Revenue"],
+        "COGS":               df["Total COGS"],
+        "Gross Profit":       df["Gross Profit"],
+        "Operating Expenses": df["Operating Expenses"],  # CAC + Shipping
+        "Operating Income":   df["Operating Income"],
+        "Tax Expense":        df["Tax Expense"],
+        "Net Income":         df["Net Income"],          # after-tax
     })
     annual_is = is_df.head(12).sum().to_frame().T
     annual_is.index = ["Year 1"]
 
-    # Cash Flow Statement
+    # Cash Flow Statement (Operating + simple Financing)
     cf = pd.DataFrame({
         "Operating Cash Flow": df["Net Cash Flow"],
         "Financing Cash Flow": 0
@@ -340,15 +386,9 @@ def build_financials(df, p):
 
     return bs, annual_is, cf
 
-
 # ─── Run & Display Reports ───────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
-
-# Annual tax disclosure
-annual_is_df = annual_is_df.copy()
-annual_is_df["Income Tax"] = annual_is_df["Net Income"] * tax_rate
-annual_is_df["Income After Tax"] = annual_is_df["Net Income"] - annual_is_df["Income Tax"]
 
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
@@ -358,19 +398,20 @@ display_df = sim_df.drop(columns=["Transit Value"])
 display_cols = [
     "New Monthly Subs", "New Prepaid Subs",
     "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
+    "Backorder S1", "Backorder S2", "Backorder S3",
     "Total Shipments", "Total Subscribers", "Total Prepaid Subs",
     "Inv S1", "Inv S2", "Inv S3",
     "Inventory Value",
     "Reorder Stages",
     "Monthly Revenue", "Prepaid Rev Recognized", "Total Revenue",
     "Total COGS", "Gross Profit",
-    "CAC",
+    "Operating Expenses",
     "Operating Income",
-    "Shipping Exp",
-    "Net Income",
+    "Tax Expense",
+    "Net Income",           # after-tax
     "Reorder Cost",
     "Net Cash Flow",
-    "Cash Balance", "Deferred Rev Balance"
+    "Cash Balance", "Deferred Rev Balance", "Taxes Payable"
 ]
 display_df = display_df[display_cols]
 
@@ -388,7 +429,7 @@ start_month = st.sidebar.number_input(
 slice_df = bs_df.loc[start_month:start_month+2]
 fmt3 = slice_df.T.copy()
 fmt3.index = [
-    "Cash","Inventory","Unearned Revenue",
+    "Cash","Inventory","Unearned Revenue","Taxes Payable",
     "Total Current Assets","Total Liabilities",
     "Paid-in Capital","Retained Earnings",
     "Total Equity","Total L&E","Δ (Assets − L&E)"
@@ -403,7 +444,7 @@ for lbl in ["Cash","Inventory","Total Current Assets"]:
 rows.append(("", ["", "", ""]))
 # Current Liabilities
 rows.append(("Current Liabilities:", ["", "", ""]))
-for lbl in ["Unearned Revenue","Total Liabilities"]:
+for lbl in ["Unearned Revenue","Taxes Payable","Total Liabilities"]:
     ind = "  " if lbl != "Total Liabilities" else ""
     rows.append((f"{ind}{lbl}", [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
@@ -413,9 +454,8 @@ for lbl in ["Paid-in Capital","Retained Earnings","Total Equity"]:
     ind = "  " if lbl != "Total Equity" else ""
     rows.append((f"{ind}{lbl}", [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
-# Total L&E
+# Total L&E + Check
 rows.append(("Total L&E", [f"{v:,.2f}" for v in fmt3.loc["Total L&E"]]))
-# Check row
 rows.append(("Assets − L&E", [f"{v:,.2f}" for v in (fmt3.loc["Total Current Assets"] - fmt3.loc["Total L&E"])]))
 
 cols = [f"Month {m}" for m in slice_df.index]
@@ -435,6 +475,7 @@ with st.expander("📊 Balance Sheet (Months 1-12)"):
         "Inventory Value",
         "Total Current Assets",
         "Unearned Revenue",
+        "Taxes Payable",
         "Total Liabilities",
         "Paid-in Capital",
         "Retained Earnings",
@@ -454,63 +495,40 @@ with st.expander("📈 Monthly Cash Flow Statement"):
              .format(fmt_flt)
     )
 
+# All calculation methods (updated for GAAP tweaks)
 with st.expander("📋 All Calculation Methods"):
     st.markdown(r"""
-    ### Subscriber Growth and Shipments
-    - **Total Active Subscribers**: count of all current monthly and prepaid subscribers
-    - **Estimated New Subscribers** = Total Active Subscribers × Monthly Growth Rate
-    - **New Prepaid Subscriptions** = Estimated New Subscribers × Percent Prepaid
-    - **New Monthly Subscriptions** = Estimated New Subscribers × (1 − Percent Prepaid)
-    - **Shipment Breakdown by Stage**:
-      - Stage 1 shipment count
-      - Stage 2 shipment count
-      - Stage 3 shipment count
+    ### Revenue Recognition
+    - **Monthly subscriptions**: revenue recognized when packs ship (no ship → no revenue).
+    - **Prepaid subscriptions**: cash received upfront (flows via **+ΔDeferred**); revenue recognized monthly as shipped; **Deferred Revenue** reduced only for shipped prepaid packs.
 
-    ### Inventory Management
-    - **End-of-Month Inventory for Each Stage** = Previous Month Inventory + New Arrivals − Total Shipments for the Stage
-    - **Safety Stock Threshold** = Ceiling of [(Current Month Shipments + (Current Month Shipments × Lead Time in Months)) × Safety Factor]
-    - **Reorder Trigger**: when inventory for a stage ≤ Safety Stock Threshold, an order of the Reorder Quantity is placed at the fixed stage reorder cost, arriving after the lead time.
-
-    ### Pricing & Cost of Goods Sold (COGS)
-    - **Effective Prepaid Pack Price** = Standard Pack Price × (1 − Prepaid Discount Rate)
-    - **Average Cost per Pack** = Total Inventory Value ÷ Total Packs on Hand
-    - **COGS** = (Total Monthly Packs Shipped + Total Prepaid Packs Shipped) × Average Cost per Pack
-
-    ### Revenue & Profit
-    - **Monthly Subscription Revenue** = Total Monthly Packs Shipped × Standard Pack Price
-    - **Prepaid Revenue Recognized** = Total Prepaid Packs Shipped × Effective Prepaid Pack Price
-    - **Total Revenue** = Monthly Subscription Revenue + Prepaid Revenue Recognized
-    - **Gross Profit** = Total Revenue − COGS
+    ### Inventory & COGS
+    - **Inventory**: capitalized at cost when ordered (in-transit), then moved on-hand on arrival.
+    - **COGS**: weighted-average cost per on-hand pack × packs actually shipped.
 
     ### Operating Expenses
-    - **Customer Acquisition Cost (CAC)** = (New Monthly Subscriptions × Monthly CAC) + (New Prepaid Subscriptions × Prepaid CAC)
-    - **Operating Income** = Gross Profit − Customer Acquisition Cost
-    - **Shipping Expense** = (Total Monthly Packs Shipped + Total Prepaid Packs Shipped) × Shipping Cost per Pack
-    - **Net Income** = Operating Income − Shipping Expense
+    - **CAC** expensed as incurred.
+    - **Outbound Shipping** included in Operating Expenses (not COGS).
 
-    ### Reorder Costs
-    - **Reorder Cost** = Sum of fixed reorder fees for each stage reorder event in the month
+    ### Taxes
+    - **Tax Expense** = max(Operating Income, 0) × tax rate; accrued monthly.
+    - **Taxes Payable** increases by Tax Expense and decreases by any taxes paid (if enabled).
 
-    ### Cash Flow
-    - **Deferred Revenue Balance** = Outstanding prepaid revenue not yet recognized
-    - **Change in Deferred Revenue** = This Month’s Deferred Revenue Balance − Last Month’s Deferred Revenue Balance
-    - **Cash Inflow from Sales** = Total Revenue
-    - **Cash Outflow for Expenses** = Customer Acquisition Cost + Shipping Expense
-    - **Net Cash Flow** = Cash Inflow from Sales − Cash Outflow for Expenses − Reorder Cost + Change in Deferred Revenue
-    - **Cash Balance** = Previous Cash Balance + Net Cash Flow
+    ### Cash Flow (Operating)
+    - **Operating Cash Flow** = Revenue cash (assumed immediate) − CAC − Shipping − Inventory purchases − Taxes Paid + **ΔDeferred Revenue**.
 
-    ### Balance Sheet Overview
-    - **Cash Balance**: Cumulative cash available at period end
-    - **Inventory Value**: Sum of on-hand pack value and inventory in transit
-    - **Unearned Revenue**: Deferred Revenue Balance under liabilities
-    - **Paid-in Capital**: Initial inventory financing amount
-    - **Retained Earnings**: Cumulative sum of Net Income over time
-    - **Total Equity**: Paid-in Capital + Retained Earnings
-    - **Total Liabilities and Equity**: Unearned Revenue + Total Equity (matches Total Assets)
+    ### Equity & Retained Earnings
+    - **Paid-in Capital**: initial financing.
+    - **Retained Earnings**: cumulative **after-tax** income.
+
+    ### Balance Sheet Identity
+    - **Assets** = Cash + Inventory (on-hand + in-transit).
+    - **Liabilities** = Unearned Revenue + Taxes Payable.
+    - **Equity** = Paid-in Capital + Retained Earnings.
+    - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
 
 # ─── Quick Print & Download ──────────────────────────────────────────────────
-# Collect the settings you want printed (from sidebar/params)
 settings_map = {
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
@@ -535,21 +553,20 @@ settings_map = {
 _settings = {k: params.get(k) for k in settings_map.keys()}
 for k in ("initial_inventory", "reorder_cost", "start_stage_dist", "ship1_dist"):
     _settings[k] = fmt_nested(_settings[k])
-
 _settings["tax_rate"] = f"{tax_rate:.2%}"
+_settings["pay_taxes_monthly"] = "Yes" if pay_taxes_now else "No"
 _settings["start_month_3mo_view"] = start_month
 
 settings_html = dict_to_html_table(_settings, settings_map | {
     "tax_rate": "Income Tax Rate",
+    "pay_taxes_monthly": "Pay Taxes Monthly?",
     "start_month_3mo_view": "Start Month (3-Month BS View)"
 })
 
-# Convert dataframes to simple HTML (no Streamlit styling, but printable)
 monthly_html = display_df.to_html(index=True, border=0)
 annual_is_html = annual_is_df.to_html(index=True, border=0)
 bs3_html = df3.to_html(index=False, border=0)
 
-# Build a lightweight printable HTML document
 generated_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
 print_doc = f"""<!doctype html>
 <html>
@@ -566,10 +583,7 @@ print_doc = f"""<!doctype html>
     th {{ background: #f6f6f6; }}
     tr {{ page-break-inside: avoid; }}
     .pagebreak {{ page-break-before: always; }}
-    @media print {{
-      .noprint {{ display: none !important; }}
-      body {{ padding: 0; }}
-    }}
+    @media print {{ .noprint {{ display: none !important; }} body {{ padding: 0; }} }}
     .header {{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px; }}
     .small {{ font-size: 12px; color: #555; }}
   </style>
@@ -579,29 +593,21 @@ print_doc = f"""<!doctype html>
     <h1>BareBump – Quick Report</h1>
     <div class="small">Generated: {generated_ts}</div>
   </div>
-
   <h2>Simulation Settings</h2>
   {settings_html}
-
   <div class="pagebreak"></div>
   <h2>Monthly Simulation Details</h2>
   {monthly_html}
-
   <div class="pagebreak"></div>
   <h2>Balance Sheet (3-Month View)</h2>
   {bs3_html}
-
   <div class="pagebreak"></div>
   <h2>Annual Income Statement</h2>
   {annual_is_html}
-
-  <div class="noprint" style="margin-top:16px;">
-    <button onclick="window.print()">Print</button>
-  </div>
+  <div class="noprint" style="margin-top:16px;"><button onclick="window.print()">Print</button></div>
 </body>
 </html>"""
 
-# Button that opens a new tab with the printable document and triggers print()
 if st.button("🖨️ Quick Print (Settings + Monthly + 3-Mo BS + Annual IS)"):
     components.html(
         f"""
@@ -617,7 +623,6 @@ if st.button("🖨️ Quick Print (Settings + Monthly + 3-Mo BS + Annual IS)"):
         height=0, width=0
     )
 
-# Optional: downloadable HTML file for records
 st.download_button(
     "⬇️ Download Quick Report (HTML)",
     data=print_doc.encode("utf-8"),
