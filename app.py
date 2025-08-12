@@ -429,6 +429,136 @@ with st.expander("📈 Monthly Cash Flow Statement"):
         cf_df.style
              .format(fmt_flt)
     )
+# --- Quick Print Button (place near the bottom, after tables are built) ---
+import streamlit.components.v1 as components
+from datetime import datetime
+import html
+
+def dict_to_html_table(d: dict, title_map: dict = None) -> str:
+    """Render a simple 2-col HTML table from a dict."""
+    rows = []
+    for k, v in d.items():
+        label = title_map.get(k, k) if title_map else k
+        rows.append(f"<tr><th>{html.escape(str(label))}</th><td>{html.escape(str(v))}</td></tr>")
+    return "<table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+
+# Collect the settings you want printed (from sidebar/params)
+settings_map = {
+    "monthly_price":          "Sale Price ($)",
+    "initial_subscribers":    "Initial Monthly Subs",
+    "initial_prepaid":        "Initial Prepaid Subs",
+    "subscriber_growth_rate": "Growth Rate",
+    "percent_prepaid":        "% Prepaid",
+    "prepaid_discount_rate":  "Prepaid Discount",
+    "cac_new_monthly":        "Monthly CAC ($)",
+    "cac_new_prepaid":        "Prepaid CAC ($)",
+    "churn_rate":             "Churn Rate",
+    "lead_time":              "Lead Time (months)",
+    "reorder_safety":         "Safety Factor",
+    "reorder_qty":            "Reorder Quantity (#)",
+    "shipping_cost_pkg":      "Shipping Cost per Pack ($)",
+    "initial_inventory":      "Initial Inventory by Stage",
+    "initial_inventory_cost": "Initial Inventory Cost ($)",
+    "reorder_cost":           "Reorder Cost by Stage",
+    "start_stage_dist":       "Start Stage %",
+    "ship1_dist":             "Pct Ship Stage 1 Initial",
+    "simulation_months":      "Simulation Months",
+}
+# Build a shallow copy so we can pretty-print a few dict fields
+_settings = {k: params.get(k) for k in settings_map.keys()}
+# Pretty-print nested dicts
+def fmt_nested(d):
+    if not isinstance(d, dict): 
+        return d
+    return ", ".join([f"S{sk}:{sv}" for sk, sv in d.items()])
+
+for k in ("initial_inventory", "reorder_cost", "start_stage_dist", "ship1_dist"):
+    _settings[k] = fmt_nested(_settings[k])
+
+# Add tax rate (not in params) and the 3-month view starting month if you want it
+_settings["tax_rate"] = f"{tax_rate:.2%}"
+_settings["start_month_3mo_view"] = start_month
+
+# Convert settings to HTML
+settings_html = dict_to_html_table(_settings, settings_map | {
+    "tax_rate": "Income Tax Rate",
+    "start_month_3mo_view": "Start Month (3-Month BS View)"
+})
+
+# Convert dataframes to simple HTML (no Streamlit styling, but printable)
+monthly_html = display_df.to_html(index=True, border=0)
+annual_is_html = annual_is_df.to_html(index=True, border=0)
+
+# Build a lightweight printable HTML document
+generated_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+print_doc = f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>BareBump – Quick Report</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: Arial, sans-serif; padding: 24px; color: #111; }}
+    h1, h2 {{ margin: 0 0 8px; }}
+    .meta {{ margin-bottom: 16px; color: #666; }}
+    table {{ border-collapse: collapse; width: 100%; margin: 8px 0 24px; }}
+    th, td {{ border: 1px solid #ddd; padding: 8px; font-size: 12px; text-align: left; }}
+    th {{ background: #f6f6f6; }}
+    .pagebreak {{ page-break-before: always; }}
+    @media print {{
+      .noprint {{ display: none !important; }}
+      body {{ padding: 0; }}
+    }}
+    .header {{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px; }}
+    .small {{ font-size: 12px; color: #555; }}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>BareBump – Quick Report</h1>
+    <div class="small">Generated: {generated_ts}</div>
+  </div>
+
+  <h2>Simulation Settings</h2>
+  {settings_html}
+
+  <div class="pagebreak"></div>
+  <h2>Monthly Simulation Details</h2>
+  {monthly_html}
+
+  <div class="pagebreak"></div>
+  <h2>Annual Income Statement</h2>
+  {annual_is_html}
+
+  <div class="noprint" style="margin-top:16px;">
+    <button onclick="window.print()">Print</button>
+  </div>
+</body>
+</html>"""
+
+# Button that opens a new tab with the printable document and triggers print()
+if st.button("🖨️ Quick Print (Settings + Monthly + Annual IS)"):
+    components.html(
+        f"""
+        <script>
+        const html = `{print_doc.replace("`","\\`")}`;
+        const w = window.open("", "_blank");
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        w.print();
+        </script>
+        """,
+        height=0, width=0
+    )
+
+# (Optional) also provide a downloadable HTML file for record-keeping
+st.download_button(
+    "⬇️ Download Quick Report (HTML)",
+    data=print_doc.encode("utf-8"),
+    file_name="BareBump_Quick_Report.html",
+    mime="text/html"
+)
 
 # Insert this at the bottom of your Streamlit script, after your last st.dataframe() call
 with st.expander("📋 All Calculation Methods"):
