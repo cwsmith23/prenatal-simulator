@@ -391,6 +391,64 @@ def build_financials(df, p):
 # ─── Run & Display Reports ───────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
+# ─── Audit checks (identity & rollforwards) ───────────────────────────────────
+st.subheader("🔎 Audit Checks")
+
+audit = {}
+
+df = sim_df.copy()
+
+# 1) Statement identities (per month, to the cent)
+audit["Gross Profit tie"] = (df["Total Revenue"] - df["Total COGS"] - df["Gross Profit"]).round(2)
+audit["OpEx tie"]         = (df["CAC"] + df["Shipping Exp"] - df["Operating Expenses"]).round(2)
+audit["OpInc tie"]        = (df["Gross Profit"] - df["Operating Expenses"] - df["Operating Income"]).round(2)
+audit["Tax tie"]          = ((df["Operating Income"].clip(lower=0) * tax_rate) - df["Tax Expense"]).round(2)
+audit["Net Income tie"]   = (df["Operating Income"] - df["Tax Expense"] - df["Net Income"]).round(2)
+
+# 2) Cash rollforward: ΔCash = Net Cash Flow
+audit["Cash roll"] = (df["Cash Balance"].diff().fillna(df["Cash Balance"]) - df["Net Cash Flow"]).round(2)
+
+# 3) Deferred revenue rollforward:
+#    ΔDeferred should equal (new_pre * monthly_amt * 9) − Prepaid Rev Recognized
+monthly_amt = params["monthly_price"] * (1 - params["prepaid_discount_rate"])
+new_pre = df["New Prepaid Subs"].copy()
+if len(new_pre) > 0:
+    new_pre.iloc[0] = 0  # initial deferred was seeded at t=0 already
+expected_def_change = (new_pre * monthly_amt * 9 - df["Prepaid Rev Recognized"]).round(2)
+actual_def_change = df["Deferred Rev Balance"].diff().fillna(
+    df["Deferred Rev Balance"].iloc[0] - (params["initial_prepaid"] * monthly_amt * 9)
+).round(2)
+audit["Deferred roll"] = (actual_def_change - expected_def_change).round(2)
+
+# 4) Inventory asset identity:
+#    InvAsset_t = InitialCost + Σ(Reorder Cost)_t − Σ(COGS)_t
+inv_asset = (df["Inventory Value"] + sim_df["Transit Value"]).round(2)
+inv_expected = (params["initial_inventory_cost"]
+                + df["Reorder Cost"].cumsum()
+                - df["Total COGS"].cumsum()).round(2)
+audit["Inventory asset tie"] = (inv_asset - inv_expected).round(2)
+
+# 5) Taxes Payable rollforward:
+#    TP_t = TP_{t-1} + TaxExpense_t − TaxesPaid_t
+#    In this model, TaxesPaid_t = TaxExpense_t if pay_taxes_now else 0
+taxes_paid = df["Tax Expense"] if pay_taxes_now else 0
+tp_roll = (df["Taxes Payable"].diff().fillna(df["Taxes Payable"]) - (df["Tax Expense"] - taxes_paid)).round(2)
+audit["Taxes Payable roll"] = tp_roll
+
+# 6) Balance sheet identity (already in bs_df, recheck here)
+audit["Assets − (L+E)"] = (bs_df["Total Current Assets"] - bs_df["Total L&E"]).round(2)
+
+audit_df = pd.DataFrame(audit)
+bad = (audit_df.abs() > 0.01).any(axis=1)
+
+if bad.any():
+    st.error("⚠️ Audit failed for the months highlighted below (non-zero deltas).")
+    st.dataframe(audit_df.loc[bad].style.format("{:,.2f}"))
+else:
+    st.success("✅ All audits passed. Statements tie to the cent and rollforwards reconcile.")
+    with st.expander("Show audit details"):
+        st.dataframe(audit_df.style.format("{:,.2f}"))
+
 
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
