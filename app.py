@@ -45,6 +45,67 @@ def q2(x: float) -> float:
     """Quantize to cents (avoid float drift)."""
     return float(round((x if x is not None else 0.0) + 1e-12, 2))
 
+# SVG subscriber chart (no matplotlib required)
+def build_subscriber_svg(months, total_subs, prepaid_subs=None, width=900, height=260, title="Subscriber Trend"):
+    pad = 36
+    inner_w, inner_h = width - 2*pad, height - 2*pad
+    if len(months) == 0:
+        months = [0]
+        total_subs = [0]
+        prepaid_subs = [0] if prepaid_subs is None else prepaid_subs
+
+    ymax = max(max(total_subs), max(prepaid_subs) if prepaid_subs else 0, 1)
+    def xmap(i): 
+        denom = (len(months)-1) if len(months) > 1 else 1
+        return pad + (i/denom)*inner_w
+    def ymap(v): 
+        return height - pad - (v/max(ymax,1))*inner_h
+
+    def path_from_series(series):
+        pts = [f"{xmap(i):.2f},{ymap(v):.2f}" for i, v in enumerate(series)]
+        return "M " + " L ".join(pts)
+
+    # gridlines
+    grid = []
+    for k in range(6):
+        y = pad + k*(inner_h/5)
+        grid.append(f'<line x1="{pad}" y1="{height-y}" x2="{width-pad}" y2="{height-y}" stroke="#eee" />')
+    axes = f'''
+      <line x1="{pad}" y1="{height-pad}" x2="{width-pad}" y2="{height-pad}" stroke="#888"/>
+      <line x1="{pad}" y1="{pad}" x2="{pad}" y2="{height-pad}" stroke="#888"/>
+    '''
+
+    total_path = path_from_series(total_subs)
+    lines = [f'<path d="{total_path}" fill="none" stroke="#2b6cb0" stroke-width="2.0"/>' ]
+    legend = []
+    legend.append(f'<circle cx="{pad+6}" cy="{pad-12}" r="4" fill="#2b6cb0"/><text x="{pad+16}" y="{pad-8}" font-size="12">Total Subscribers</text>')
+
+    if prepaid_subs:
+        pre_path = path_from_series(prepaid_subs)
+        lines.append(f'<path d="{pre_path}" fill="none" stroke="#38a169" stroke-width="2.0" stroke-dasharray="4,3"/>')
+        legend.append(f'<circle cx="{pad+170}" cy="{pad-12}" r="4" fill="#38a169"/><text x="{pad+180}" y="{pad-8}" font-size="12">Total Prepaid Subs</text>')
+
+    xticks = []
+    if months:
+        xticks.append(f'<text x="{xmap(0):.0f}" y="{height-pad+18}" font-size="11" text-anchor="middle">M{months[0]}</text>')
+        if len(months) > 1:
+            xticks.append(f'<text x="{xmap(len(months)-1):.0f}" y="{height-pad+18}" font-size="11" text-anchor="middle">M{months[-1]}</text>')
+
+    title_svg = f'<text x="{width/2:.0f}" y="18" text-anchor="middle" font-size="14" font-weight="bold">{html.escape(title)}</text>'
+
+    svg = f'''
+    <svg viewBox="0 0 {width} {height}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="{width}" height="{height}" fill="white"/>
+      {title_svg}
+      {"".join(grid)}
+      {axes}
+      {"".join(lines)}
+      {"".join(xticks)}
+      {"".join(legend)}
+    </svg>
+    '''
+    return svg
+
 # NEW: horizon-aware reorder buffer forecaster
 def forecast_reorder_buffer(inventory_now, pending_abs, current_month, exp_demand, p, months_ahead):
     """
@@ -84,34 +145,11 @@ def forecast_reorder_buffer(inventory_now, pending_abs, current_month, exp_deman
                     pipe.append([arrive_t, s, rqty, float(rcost[s])])
     return q2(total_cost_to_place)
 
-# NEW: growth model helper
-def compute_new_signups(p: dict, alive: int) -> tuple[int, int]:
-    """
-    Returns (new_monthly, new_prepaid) for this month based on the chosen model.
-    - Constant %: uses subscriber_growth_rate.
-    - Logistic: dN = r * N * (1 - N/K) + organic_floor
-    """
-    if p["growth_model"] == "Constant %":
-        total_new = int(round(alive * p["subscriber_growth_rate"]))
-    else:
-        K = max(p["tam"], 1)
-        r = max(p["adoption_speed"], 0.0)
-        base_new = r * alive * max(0.0, 1.0 - (alive / K))
-        total_new = max(0, int(round(base_new + p["organic_floor"])))
-
-    alloc = allocate_with_remainder(
-        total_new,
-        {"pre": p["percent_prepaid"], "mon": 1 - p["percent_prepaid"]}
-    )
-    return alloc["mon"], alloc["pre"]
-
 # ─── App Setup ────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
-st.title("BareBump Cash-Flow Simulator & Financials (GAAP)")
 
 # ─── Sidebar: Preset Toggle ──────────────────────────────────────────────────
 preset = st.sidebar.radio("Supplier Preset", ["NutraCap", "Pure Private Label"], index=0)
-st.caption(f"Supplier preset: **{preset}**")
 
 if preset == "NutraCap":
     DEF = dict(
@@ -120,29 +158,23 @@ if preset == "NutraCap":
         min_cash_reserve=12000
     )
 else:
-    # General defaults
     DEF = dict(
         rqty=833, inv1=833, inv2=833, inv3=833,
         inv_cost=98250, rcost1=32750, rcost2=32750, rcost3=32750,
         min_cash_reserve=32750
     )
 
+st.title(f"BareBump Cash-Flow Simulator & Financials (GAAP) — {preset}")
+
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
+# Growth model
+growth_model = st.sidebar.selectbox("Growth Model", ["Constant %", "Logistic (Total Addressable Market)"], index=0)
+monthly_growth = st.sidebar.number_input("Growth Rate (per month)", 0.0, 1.0, 0.10, format="%.2f")
+tam = st.sidebar.number_input("Total Addressable Market (subscribers)", 100, 2_000_000, 100_000, step=1000)
+
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 100000, 250)
 init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 100000, 20)
-
-# Growth model controls (non-seasonal)
-growth_model = st.sidebar.selectbox(
-    "Growth Model",
-    ["Constant %", "Logistic (non-seasonal)"],
-    index=1
-)
-growth        = st.sidebar.number_input("Constant % Growth Rate (if used)", 0.0, 1.0, 0.10, format="%.2f")
-tam           = st.sidebar.number_input("TAM (addressable subs)", 1_000, 10_000_000, 50_000, step=1_000)
-adoption_speed= st.sidebar.slider("Adoption speed r (per month)", 0.00, 1.00, 0.12, step=0.01)
-organic_floor = st.sidebar.number_input("Organic floor signups / month", 0, 100_000, 10)
-
 pct_pre       = st.sidebar.number_input("% Prepaid", 0.0, 1.0, 0.20, format="%.2f")
 disc_pre      = st.sidebar.number_input("Prepaid Discount", 0.0, 1.0, 0.10, format="%.2f")
 cac_mon       = st.sidebar.number_input("Monthly CAC ($)", 0, 500, 20)
@@ -196,17 +228,14 @@ max_prepaid_draw_pct = st.sidebar.slider("Max % of deferred revenue cash usable 
 owner_personal_tax_rate = st.sidebar.slider("Owner effective personal tax rate (Fed+GA+SE)", 0.0, 1.0, 0.35, step=0.01, format="%.2f")
 
 params = {
+    "preset":                 preset,
+    "growth_model":           growth_model,
+    "monthly_growth":         monthly_growth,
+    "tam":                    int(tam),
+
     "monthly_price":          monthly_price,
     "initial_subscribers":    init_subs,
     "initial_prepaid":        init_pre,
-
-    # Growth model params
-    "growth_model":           growth_model,
-    "subscriber_growth_rate": growth,         # used if "Constant %"
-    "tam":                    int(tam),
-    "adoption_speed":         float(adoption_speed),
-    "organic_floor":          int(organic_floor),
-
     "percent_prepaid":        pct_pre,
     "prepaid_discount_rate":  disc_pre,
     "cac_new_monthly":        cac_mon,
@@ -250,7 +279,7 @@ init_unit_cost = (params["initial_inventory_cost"] / total_init_units) if total_
 reorder_unit_costs = {s: (params["reorder_cost"][s] / params["reorder_qty"] if params["reorder_qty"] else 0)
                       for s in (1,2,3)}
 st.caption(
-    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack  "
+    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack"
 )
 
 # ─── Core Simulation ─────────────────────────────────────────────────────────
@@ -311,14 +340,27 @@ def run_simulation(p):
 
     records = []
     for m in range(1, p["simulation_months"] + 1):
-        # Generate new cohorts (month 1 uses initial seeds; after that use selected growth model)
+        # Generate new cohorts after month 1
         if m == 1:
             new_pre = p["initial_prepaid"]
             new_mon = sum(c["count"] for c in monthly_cohorts)
         else:
-            alive = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
-            new_mon, new_pre = compute_new_signups(p, alive)
+            alive   = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
+            if p["growth_model"] == "Logistic (Total Addressable Market)":
+                # births per month = r * alive * (1 - alive/K)
+                K = max(p["tam"], 1)
+                r = p["monthly_growth"]
+                births = max(0.0, r * alive * (1 - alive / K))
+                tot = births
+            else:
+                tot = alive * p["monthly_growth"]
 
+            alloc   = allocate_with_remainder(
+                int(round(tot)),
+                {"pre": p["percent_prepaid"], "mon": 1 - p["percent_prepaid"]}
+            )
+            new_pre = alloc["pre"]
+            new_mon = alloc["mon"]
             # seed new monthly cohorts
             stage_alloc = allocate_with_remainder(new_mon, p["start_stage_dist"])
             for stg, base_cnt in stage_alloc.items():
@@ -332,7 +374,10 @@ def run_simulation(p):
                         })
             # seed new prepaid cohort & increase deferred
             if new_pre > 0:
-                prepaid_cohorts.append({"start": m, "count": new_pre})
+                prepaid_cohorts.append({
+                    "start":    m,
+                    "count":    new_pre,
+                })
                 deferred_bal = q2(deferred_bal + q2(new_pre * monthly_amt * 9))
 
         # Initialize monthly counters
@@ -507,7 +552,7 @@ def run_simulation(p):
             "Deferred Rev Balance":   deferred_bal,
             "Distribution":           distribution,
             "Cumulative Distributions": cumulative_distributions,
-            "Total Shipments":        total_ship_filled,
+            "Total Shipments":        sum(ship_mon_filled.values()) + sum(ship_pre_filled.values()),
             "Total Subscribers":      subscribers_total,
             "Total Prepaid Subs":     prepaid_total,
         })
@@ -585,7 +630,7 @@ display_df = sim_df.drop(columns=["Transit Value"])
 display_cols = [
     "New Monthly Subs", "New Prepaid Subs",
     "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
-    # Backorder columns removed per request
+    # Backorder cols removed
     "Total Shipments", "Total Subscribers", "Total Prepaid Subs",
     "Inv S1", "Inv S2", "Inv S3",
     "Inventory Value",
@@ -608,9 +653,20 @@ display_df = display_df[display_cols]
 st.subheader("Monthly Simulation Details")
 st.dataframe(
     display_df.style
-        .format(fmt_int, subset=display_df.select_dtypes("int").columns)
-        .format(fmt_flt, subset=display_df.select_dtypes("float").columns)
+        .format(fmt_int, subset=display_df.select_dtypes(include=["int", "int64"]).columns)
+        .format(fmt_flt, subset=display_df.select_dtypes(include=["float", "float64"]).columns)
 )
+
+# Subscriber chart (inline SVG)
+st.markdown("**Subscriber Trend**")
+pre_series = sim_df["Total Prepaid Subs"].tolist() if "Total Prepaid Subs" in sim_df.columns else None
+sub_svg = build_subscriber_svg(
+    months=sim_df.index.tolist(),
+    total_subs=sim_df["Total Subscribers"].tolist(),
+    prepaid_subs=pre_series,
+    title="Subscriber Trend"
+)
+components.html(sub_svg, height=300)
 
 # ─── Annual Income Statement (above 3-month BS) ──────────────────────────────
 st.subheader("Annual Income Statement")
@@ -681,11 +737,11 @@ else:
 
     total_dist = float(dist_df["Distribution"].sum())
     total_take = float(dist_df["Take Home"].sum())
-    total_pers_tax = float(dist_df["Est Personal Tax"].sum())
-    col1, col2 = st.columns(2)
+    total_personal_tax = float(dist_df["Est Personal Tax"].sum())
+    col1, col2, col3 = st.columns(3)
     col1.metric("Total Owner Distributions", f"${total_dist:,.2f}")
     col2.metric("Total Take Home", f"${total_take:,.2f}")
-    st.caption(f"Total estimated personal taxes on distributions: **${total_pers_tax:,.2f}**")
+    col3.metric("Total Personal Taxes (est)", f"${total_personal_tax:,.2f}")
 
 # ─── Monthly Cash Flow Statement (expandable, BEFORE 12-month BS) ────────────
 with st.expander("📈 Monthly Cash Flow Statement"):
@@ -720,6 +776,11 @@ with st.expander("📊 Balance Sheet (Months 1-12)"):
 # All calculation methods
 with st.expander("📋 All Calculation Methods"):
     st.markdown(r"""
+    ### Growth Models
+    - **Constant %**: New subscribers each month = Active subs × Growth Rate.
+    - **Logistic (Total Addressable Market)**: New subscribers = r × Active × (1 − Active ÷ TAM),
+      where *r* is the Growth Rate and *TAM* is your **Total Addressable Market** (maximum subscribers you can realistically reach).
+
     ### Revenue Recognition
     - **Monthly subscriptions**: revenue recognized when packs ship (no ship → no revenue).
     - **Prepaid subscriptions**: cash received upfront (flows via **+ΔDeferred**); revenue recognized monthly as shipped; **Deferred Revenue** reduced by prepaid revenue recognized this month.
@@ -732,35 +793,26 @@ with st.expander("📋 All Calculation Methods"):
     - **CAC** expensed as incurred.
     - **Outbound Shipping** included in Operating Expenses (not COGS).
 
-    ### Income Taxes (Entity Level)
-    - **Tax Expense** = max(Operating Income, 0) × effective tax rate; accrued monthly (optional cash payment).
+    ### Income Taxes
+    - **Entity-level** (LLC default **off** unless elect PTE/C-corp): Tax Expense = max(Operating Income, 0) × *entity tax rate*; accrues to **Taxes Payable** and optionally paid monthly.
+    - **Owner personal taxes (pass-through)**: Estimated as **Distribution × Owner effective personal tax rate (Fed+GA+SE)** to show take-home. (Actual pass-through tax is based on profits, not distributions; this is a conservative cash-planning proxy.)
 
     ### Sales Tax (Pass-through)
-    - Collected from customers (if taxable), recorded as **Sales Tax Payable**, not revenue; remitted per schedule.
+    - Collected from customers (if taxable), recorded as **Sales Tax Payable** (not revenue); remitted per schedule.
 
     ### Cash Flow (Operating)
     - **Operating Cash Flow** = Monthly revenue cash − CAC − Shipping − Inventory purchases − Income Taxes Paid
       + **ΔDeferred Revenue** + **Sales Tax Collected − Sales Tax Remitted**.
     - Reorders reduce cash when ordered; inventory value increases when arriving (in-transit → on-hand).
 
-    ### Growth Models
-    - **Constant %**: New signups = Current active × constant monthly growth rate.
-    - **Logistic (non-seasonal)**: New signups = `r × N × (1 − N/K) + organic_floor`, where:
-        - `N` = current active subscribers,
-        - `K` = TAM (addressable subscribers),
-        - `r` = adoption speed per month,
-        - `organic_floor` = baseline signups (word-of-mouth).
-
-    ### Equity & Distributions
-    - **Paid-in Capital**: initial financing.
-    - **Retained Earnings**: cumulative **after-tax** income.
-    - **Member Distributions (Sweeps)**: paid from **excess cash** after buffers:
-        - pending POs in pipeline,
-        - projected reorders within the horizon,
-        - next sales-tax remittance if not monthly,
-        - minimum cash reserve,
-        - plus a **prepaid cash holdback** = Deferred Revenue × (1 − Max % of deferred usable).
-      Amount swept may be further scaled by **Distribute % of excess cash**.
+    ### Owner Distributions (Sweeps)
+    - Paid from **excess cash** after buffers:
+        - Pending POs,
+        - Projected reorders within the horizon,
+        - Next sales-tax remittance if not monthly,
+        - Minimum cash reserve,
+        - **Prepaid cash holdback** = Deferred Revenue × (1 − Max % of deferred usable).
+      Final sweep = Excess Cash × **Distribute % of excess cash**.
 
     ### Balance Sheet Identity
     - **Assets** = Cash + Inventory (on-hand + in-transit).
@@ -769,17 +821,16 @@ with st.expander("📋 All Calculation Methods"):
     - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
 
-# ─── Quick Print & Download (incl. Owner Distribution totals) ────────────────
+# ─── Quick Print & Download (incl. SVG chart & Owner totals) ────────────────
 settings_map = {
     "preset":                 "Supplier Preset",
+    "growth_model":           "Growth Model",
+    "monthly_growth":         "Growth Rate (per month)",
+    "tam":                    "Total Addressable Market (subs)",
+
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
     "initial_prepaid":        "Initial Prepaid Subs",
-    "growth_model":           "Growth Model",
-    "subscriber_growth_rate": "Constant % Growth Rate",
-    "tam":                    "TAM (addressable subs)",
-    "adoption_speed":         "Adoption speed r",
-    "organic_floor":          "Organic floor signups / mo",
     "percent_prepaid":        "% Prepaid",
     "prepaid_discount_rate":  "Prepaid Discount",
     "cac_new_monthly":        "Monthly CAC ($)",
@@ -795,7 +846,7 @@ settings_map = {
     "start_stage_dist":       "Start Stage %",
     "ship1_dist":             "Pct Ship Stage 1 Initial",
     "simulation_months":      "Simulation Months",
-    # New settings in print
+    # Print extras
     "effective_tax_rate":     "Effective Entity Tax Rate",
     "pay_taxes_now":          "Pay Income Taxes Monthly?",
     "collect_sales_tax":      "Collect Sales Tax (sim)",
@@ -809,8 +860,7 @@ settings_map = {
     "max_prepaid_draw_pct":   "Max % Deferred usable",
     "owner_personal_tax_rate":"Owner Personal Tax Rate",
 }
-print_params = {"preset": preset, **params}
-_settings = {k: print_params.get(k) for k in settings_map.keys()}
+_settings = {k: params.get(k) for k in settings_map.keys()}
 for k in ("initial_inventory", "reorder_cost", "start_stage_dist", "ship1_dist"):
     _settings[k] = fmt_nested(_settings[k])
 _settings["effective_tax_rate"] = f"{params['effective_tax_rate']:.2%}"
@@ -823,6 +873,7 @@ _settings["enable_cash_sweep"] = "Yes" if params["enable_cash_sweep"] else "No"
 _settings["sweep_pct"] = f"{params['sweep_pct']:.0%}"
 _settings["max_prepaid_draw_pct"] = f"{params['max_prepaid_draw_pct']:.0%}"
 _settings["owner_personal_tax_rate"] = f"{params['owner_personal_tax_rate']:.0%}"
+_settings["monthly_growth"] = f"{params['monthly_growth']:.0%}"
 
 settings_html = dict_to_html_table(_settings, settings_map)
 
@@ -845,11 +896,19 @@ _monthly_formatters = {**{c: _fmt_int for c in _int_cols}, **{c: _fmt_flt for c 
 monthly_html_core = display_df.to_html(index=True, border=0, formatters=_monthly_formatters)
 monthly_html = f'<div class="monthly-wrap">{monthly_html_core}</div>'
 
-# Annual Income Statement
+# Subscriber chart SVG for print
+sub_svg_print = build_subscriber_svg(
+    months=sim_df.index.tolist(),
+    total_subs=sim_df["Total Subscribers"].tolist(),
+    prepaid_subs=sim_df["Total Prepaid Subs"].tolist() if "Total Prepaid Subs" in sim_df.columns else None,
+    title="Subscriber Trend"
+)
+
+# Annual Income Statement (print)
 _annual_formatters = {c: _fmt_flt for c in annual_is_df.columns}
 annual_is_html = annual_is_df.to_html(index=True, border=0, formatters=_annual_formatters)
 
-# 12-month Balance Sheet
+# 12-month Balance Sheet (print)
 bs12_order = [
     "Cash Balance",
     "Inventory Value",
@@ -880,14 +939,17 @@ if "Distribution" in sim_df.columns:
         dist_print_html = dist_print.to_html(index=True, border=0, formatters={c:_fmt_flt for c in dist_print.columns})
         total_dist_print = float(dist_print["Distribution"].sum())
         total_take_print = float(dist_print["Take Home"].sum())
+        total_tax_print  = float(dist_print["Est Personal Tax"].sum())
     else:
         dist_print_html = "<p>No owner distributions occurred in the simulated period.</p>"
         total_dist_print = 0.0
         total_take_print = 0.0
+        total_tax_print  = 0.0
 else:
     dist_print_html = "<p>No owner distributions occurred in the simulated period.</p>"
     total_dist_print = 0.0
     total_take_print = 0.0
+    total_tax_print  = 0.0
 
 # 1/8" print margins + landscape for width
 force_landscape = True
@@ -910,6 +972,7 @@ print_doc = f"""<!doctype html>
     }}
     h1 {{ font-size: 26px; margin-bottom: 6px; }}
     h2 {{ font-size: 20px; margin-top: 24px; margin-bottom: 10px; }}
+    .subtle {{ color:#666; font-size:13px; }}
 
     table {{
       border-collapse: collapse;
@@ -957,7 +1020,7 @@ print_doc = f"""<!doctype html>
 
     .totals-row {{
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 16px;
       margin-top: 4px;
     }}
@@ -969,8 +1032,9 @@ print_doc = f"""<!doctype html>
 <body>
   <div class="header">
     <h1>BareBump – Quick Report</h1>
-    <div class="small">Generated: {generated_ts} • Preset: {preset}</div>
+    <div class="small">Generated: {generated_ts}</div>
   </div>
+  <div class="subtle">Supplier Preset: <strong>{html.escape(params['preset'])}</strong></div>
 
   <h2>Simulation Settings</h2>
   {settings_html}
@@ -978,6 +1042,7 @@ print_doc = f"""<!doctype html>
   <div class="pagebreak"></div>
   <h2>Monthly Simulation Details</h2>
   {monthly_html}
+  <div style="margin-top:8px">{sub_svg_print}</div>
 
   <div class="pagebreak"></div>
   <h2>Annual Income Statement</h2>
@@ -989,6 +1054,7 @@ print_doc = f"""<!doctype html>
   <div class="totals-row">
     <div class="total-card"><strong>Total Owner Distributions:</strong> ${total_dist_print:,.2f}</div>
     <div class="total-card"><strong>Total Take Home:</strong> ${total_take_print:,.2f}</div>
+    <div class="total-card"><strong>Total Personal Taxes (est):</strong> ${total_tax_print:,.2f}</div>
   </div>
 
   <div class="pagebreak"></div>
@@ -1002,7 +1068,7 @@ print_doc = f"""<!doctype html>
 </html>"""
 
 # Button and download
-if st.button("🖨️ Quick Print (Settings + Monthly + Annual IS + Owner Dist + 12-Mo BS)"):
+if st.button("🖨️ Quick Print (Settings + Monthly + Chart + Annual IS + Owner Dist + 12-Mo BS)"):
     components.html(
         f"""
         <script>
@@ -1039,13 +1105,13 @@ audit["Tax tie"]          = ((df["Operating Income"].clip(lower=0) * params["eff
 audit["Net Income tie"]   = (df["Operating Income"] - df["Tax Expense"] - df["Net Income"]).round(2)
 
 # 2) Deferred revenue rollforward:
-monthly_amt_dbg = params["monthly_price"] * (1 - params["prepaid_discount_rate"])
+monthly_amt = params["monthly_price"] * (1 - params["prepaid_discount_rate"])
 new_pre = df["New Prepaid Subs"].copy()
 if len(new_pre) > 0:
     new_pre.iloc[0] = 0  # initial deferred seeded at t=0
-expected_def_change = (new_pre * monthly_amt_dbg * 9 - df["Prepaid Rev Recognized"]).round(2)
+expected_def_change = (new_pre * monthly_amt * 9 - df["Prepaid Rev Recognized"]).round(2)
 actual_def_change = df["Deferred Rev Balance"].diff().fillna(
-    df["Deferred Rev Balance"].iloc[0] - (params["initial_prepaid"] * monthly_amt_dbg * 9)
+    df["Deferred Rev Balance"].iloc[0] - (params["initial_prepaid"] * monthly_amt * 9)
 ).round(2)
 audit["Deferred roll"] = (actual_def_change - expected_def_change).round(2)
 
@@ -1067,7 +1133,8 @@ stp_roll = (df["Sales Tax Payable"].diff().fillna(df["Sales Tax Payable"])
 audit["Sales Tax Payable roll"] = stp_roll
 
 # 6) Balance sheet identity
-audit["Assets − (L+E)"] = (bs_df["Total Current Assets"] - bs_df["Total L&E"]).round(2)
+bs_identity = (bs_df["Total Current Assets"] - bs_df["Total L&E"]).round(2)
+audit["Assets − (L+E)"] = bs_identity
 
 audit_df = pd.DataFrame(audit)
 bad = (audit_df.abs() > 0.01).any(axis=1)
