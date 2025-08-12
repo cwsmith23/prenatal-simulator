@@ -45,11 +45,11 @@ def q2(x: float) -> float:
     """Quantize to cents (avoid float drift)."""
     return float(round((x if x is not None else 0.0) + 1e-12, 2))
 
-# Horizon-aware reorder buffer forecaster
+# NEW: horizon-aware reorder buffer forecaster
 def forecast_reorder_buffer(inventory_now, pending_abs, current_month, exp_demand, p, months_ahead):
     """
     Estimate reorder cash likely to be PLACED within the next `months_ahead` months.
-    Simplified constant-demand proxy.
+    Constant-demand proxy using exp_demand; mirrors arrival -> ship -> threshold -> place-reorder.
     """
     inv = {k: int(v) for k, v in inventory_now.items()}
     lead = int(p["lead_time"])
@@ -88,26 +88,22 @@ def forecast_reorder_buffer(inventory_now, pending_abs, current_month, exp_deman
 st.set_page_config(layout="wide")
 st.title("BareBump Cash-Flow Simulator & Financials (GAAP)")
 
-# ─── Supplier Toggle (TOP OF SIDEBAR) ────────────────────────────────────────
-supplier_model = st.sidebar.radio(
-    "Fulfillment Model",
-    ("NutraCap", "Pure Private Label"),
-    index=0  # default to NutraCap per your request
-)
+# ─── Sidebar: Preset Toggle ──────────────────────────────────────────────────
+preset = st.sidebar.radio("Supplier Preset", ["NutraCap", "Pure Private Label"], index=0)
 
-# Default sets per supplier
-if supplier_model == "NutraCap":
-    DEF_RQTY = 500
-    DEF_INV1 = DEF_INV2 = DEF_INV3 = 500
-    DEF_INV_COST = 32100
-    DEF_RCOST1, DEF_RCOST2, DEF_RCOST3 = 9750, 12000, 10350
-    DEF_MIN_RESERVE = 12000
-else:  # Pure Private Label (your prior defaults)
-    DEF_RQTY = 833
-    DEF_INV1 = DEF_INV2 = DEF_INV3 = 833
-    DEF_INV_COST = 98250
-    DEF_RCOST1 = DEF_RCOST2 = DEF_RCOST3 = 32750
-    DEF_MIN_RESERVE = 32750
+if preset == "NutraCap":
+    DEF = dict(
+        rqty=500, inv1=500, inv2=500, inv3=500,
+        inv_cost=32100, rcost1=9750, rcost2=12000, rcost3=10350,
+        min_cash_reserve=12000
+    )
+else:
+    # Your prior general defaults
+    DEF = dict(
+        rqty=833, inv1=833, inv2=833, inv3=833,
+        inv_cost=98250, rcost1=32750, rcost2=32750, rcost3=32750,
+        min_cash_reserve=32750
+    )
 
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
@@ -121,15 +117,15 @@ cac_pre       = st.sidebar.number_input("Prepaid CAC ($)", 0, 500, 20)
 churn         = st.sidebar.number_input("Churn Rate", 0.0, 1.0, 0.05, format="%.2f")
 lead_time     = st.sidebar.number_input("Lead Time (months)", 0, 12, 1)
 safety        = st.sidebar.number_input("Safety Factor", 1.0, 3.0, 1.2, format="%.2f")
-rqty          = st.sidebar.number_input("Reorder Quantity (#)", 0, 25000, DEF_RQTY)
-rcost1        = st.sidebar.number_input("Reorder Cost Stage 1 ($)", 0, 1000000, DEF_RCOST1)
-rcost2        = st.sidebar.number_input("Reorder Cost Stage 2 ($)", 0, 1000000, DEF_RCOST2)
-rcost3        = st.sidebar.number_input("Reorder Cost Stage 3 ($)", 0, 1000000, DEF_RCOST3)
+rqty          = st.sidebar.number_input("Reorder Quantity (#)", 0, 25000, DEF["rqty"])
+rcost1        = st.sidebar.number_input("Reorder Cost Stage 1 ($)", 0, 1000000, DEF["rcost1"])
+rcost2        = st.sidebar.number_input("Reorder Cost Stage 2 ($)", 0, 1000000, DEF["rcost2"])
+rcost3        = st.sidebar.number_input("Reorder Cost Stage 3 ($)", 0, 1000000, DEF["rcost3"])
 ship_cost_pkg = st.sidebar.number_input("Shipping Cost per Pack ($)", 0.0, 50.0, 5.0, format="%.2f")
-inv1          = st.sidebar.number_input("Initial Inv Stage 1 (#)", 0, 25000, DEF_INV1)
-inv2          = st.sidebar.number_input("Initial Inv Stage 2 (#)", 0, 25000, DEF_INV2)
-inv3          = st.sidebar.number_input("Initial Inv Stage 3 (#)", 0, 25000, DEF_INV3)
-inv_cost      = st.sidebar.number_input("Initial Inventory Cost ($)", 0, 500000, DEF_INV_COST)
+inv1          = st.sidebar.number_input("Initial Inv Stage 1 (#)", 0, 25000, DEF["inv1"])
+inv2          = st.sidebar.number_input("Initial Inv Stage 2 (#)", 0, 25000, DEF["inv2"])
+inv3          = st.sidebar.number_input("Initial Inv Stage 3 (#)", 0, 25000, DEF["inv3"])
+inv_cost      = st.sidebar.number_input("Initial Inventory Cost ($)", 0, 500000, DEF["inv_cost"])
 st1           = st.sidebar.number_input("Start Stage 1 %", 0.0, 1.0, 0.60, format="%.2f")
 st2           = st.sidebar.number_input("Start Stage 2 %", 0.0, 1.0, 0.30, format="%.2f")
 st3           = st.sidebar.number_input("Start Stage 3 %", 0.0, 1.0, 0.10, format="%.2f")
@@ -138,8 +134,10 @@ ship1_2       = st.sidebar.number_input("Pct Ship Stage 2 Initial", 0.0, 1.0, 0.
 ship1_3       = st.sidebar.number_input("Pct Ship Stage 3 Initial", 0.0, 1.0, 0.05, format="%.2f")
 months        = st.sidebar.number_input("Simulation Months", 1, 36, 12)
 
-# Entity-level income tax (LLC: off unless you simulate PTE/C-corp)
+# Entity-level income tax (LLC: off unless PTE/C-corp)
 tax_rate      = st.sidebar.slider("Income Tax Rate (entity-level)", 0.0, 1.0, 0.21, step=0.01, format="%.2f")
+entity_pays_state_tax = st.sidebar.checkbox("Entity pays state income tax (PTE/C-corp)?", value=False)
+effective_tax_rate = tax_rate if entity_pays_state_tax else 0.0
 pay_taxes_now = st.sidebar.checkbox("Pay Income Taxes Monthly (else accrue)", value=False)
 
 # Sales tax & distributions
@@ -152,18 +150,17 @@ taxable_sales_fraction = st.sidebar.number_input(
     "Taxable sales fraction (0–1)", 0.0, 1.0, 1.0, format="%.2f"
 )
 
-# Cash sweep controls
-enable_cash_sweep     = st.sidebar.checkbox("Enable cash sweep (owner distributions)", value=True)
-min_cash_reserve      = st.sidebar.number_input("Minimum cash reserve ($)", 0, 10000000, DEF_MIN_RESERVE, step=250)
-sweep_horizon_months  = st.sidebar.number_input("Cash sweep horizon (months)", 1, 12, 2)
-sweep_pct             = st.sidebar.slider("Distribute % of excess cash", 0.0, 1.0, 1.0, step=0.05)
-restricted_deferred_pct = st.sidebar.slider("Reserve % of deferred revenue", 0.0, 1.0, 0.50, step=0.05)
+# Cash sweep / distributions
+enable_cash_sweep = st.sidebar.checkbox("Enable cash sweep (owner distributions)", value=True)
+min_cash_reserve = st.sidebar.number_input("Minimum cash reserve ($)", 0, 10000000, DEF["min_cash_reserve"], step=250)
+sweep_horizon_months = st.sidebar.number_input("Cash sweep horizon (months)", 1, 12, 2)
+sweep_pct = st.sidebar.slider("Distribute % of excess cash", 0.0, 1.0, 1.0, step=0.05)
 
-# Owner-level (personal) tax estimate for pass-through distributions view
-owner_eff_tax_rate = st.sidebar.slider(
-    "Owner personal effective tax rate (Fed + GA)", 0.00, 1.00, 0.30, step=0.01, format="%.2f"
-)
-owner_equity_share = st.sidebar.number_input("Owner equity share (0–1)", 0.0, 1.0, 1.0, step=0.05)
+# Prepaid cash restriction for sweeps (allow some portion of deferred to be swept)
+max_prepaid_draw_pct = st.sidebar.slider("Max % of deferred revenue cash usable for sweep", 0.0, 1.0, 0.50, step=0.05, format="%.2f")
+
+# Owner personal taxes (for take-home view)
+owner_personal_tax_rate = st.sidebar.slider("Owner effective personal tax rate (Fed+GA+SE)", 0.0, 1.0, 0.35, step=0.01, format="%.2f")
 
 params = {
     "monthly_price":          monthly_price,
@@ -187,7 +184,7 @@ params = {
     "simulation_months":      months,
 
     # Taxes (entity-level)
-    "effective_tax_rate":     tax_rate,
+    "effective_tax_rate":     effective_tax_rate,
     "pay_taxes_now":          pay_taxes_now,
 
     # Sales tax pass-through
@@ -201,8 +198,10 @@ params = {
     "min_cash_reserve":       float(min_cash_reserve),
     "sweep_horizon_months":   int(sweep_horizon_months),
     "sweep_pct":              float(sweep_pct),
-    "restricted_deferred_pct":float(restricted_deferred_pct),
-    "supplier_model":         supplier_model,
+    "max_prepaid_draw_pct":   float(max_prepaid_draw_pct),
+
+    # Owner tax view
+    "owner_personal_tax_rate":float(owner_personal_tax_rate),
 }
 
 # Unit cost sanity panel
@@ -320,7 +319,7 @@ def run_simulation(p):
             inventory_transit_value = q2(inventory_transit_value - cost)
         pending = [x for x in pending if x[0] > m]
 
-        # Weighted-average cost per on-hand unit
+        # Weighted-average cost per on-hand unit (stabilize to 4 decimals)
         tot_inv = sum(inventory.values())
         cost_per_pkg = round(inventory_value / tot_inv, 4) if tot_inv > 0 else 0.0
 
@@ -348,16 +347,12 @@ def run_simulation(p):
         # Fill by stage with stockout protection (prepaid priority)
         ship_mon_filled = {1:0,2:0,3:0}
         ship_pre_filled = {1:0,2:0,3:0}
-        backorder_mon   = {1:0,2:0,3:0}
-        backorder_pre   = {1:0,2:0,3:0}
 
         for s in (1,2,3):
             available = max(inventory[s], 0)
             filled_pre = min(ship_pre_demand[s], available)
             available -= filled_pre
             filled_mon = min(ship_mon_demand[s], available)
-            backorder_pre[s] = ship_pre_demand[s] - filled_pre
-            backorder_mon[s] = ship_mon_demand[s] - filled_mon
             ship_pre_filled[s] = filled_pre
             ship_mon_filled[s] = filled_mon
             inventory[s] -= (filled_pre + filled_mon)
@@ -392,7 +387,7 @@ def run_simulation(p):
         op_expenses   = q2(cac + shipping_exp)
         op_inc        = q2(gross - op_expenses)
 
-        # Deferred revenue: reduce by recognized prepaid revenue
+        # Deferred revenue: reduce exactly by recognized prepaid revenue
         deferred_bal  = q2(deferred_bal - rev_pre)
         def_change    = q2(deferred_bal - prev_def_bal)
         prev_def_bal  = deferred_bal
@@ -403,7 +398,7 @@ def run_simulation(p):
         taxes_payable   = q2(taxes_payable + tax_expense - taxes_paid_now)
         net_inc_after_tax = q2(op_inc - tax_expense)
 
-        # Sales tax pass-through (collected; not revenue)
+        # Sales tax pass-through (collected from customers; not revenue)
         if p["collect_sales_tax"]:
             sales_tax_collected = q2(total_rev * p["taxable_sales_fraction"] * p["avg_effective_sales_tax"])
         else:
@@ -416,7 +411,7 @@ def run_simulation(p):
                       + sales_tax_collected - sales_tax_remitted)
         cash     = q2(cash + net_cash)
 
-        # CASH SWEEP / OWNER DISTRIBUTIONS (buffers + toggle) — includes deferred % reserve
+        # CASH SWEEP / OWNER DISTRIBUTIONS (after buffers) — horizon-aware + prepaid cap
         distribution = q2(0.0)
         if p["enable_cash_sweep"]:
             pending_costs = q2(sum(cost for (arr_m, s_, qty_, cost) in pending))
@@ -434,19 +429,13 @@ def run_simulation(p):
 
             next_sales_tax_remit = q2(0.0 if p["remit_sales_tax_monthly"] else sales_tax_payable)
 
-            # Reserve a % of deferred revenue (slider)
-            reserved_deferred = q2(p["restricted_deferred_pct"] * deferred_bal)
+            # Prepaid cap: only this portion of deferred is considered "available"
+            allowed_prepaid_draw = q2(deferred_bal * p["max_prepaid_draw_pct"])
+            must_hold_prepaid    = q2(max(0.0, deferred_bal - allowed_prepaid_draw))
 
-            buffer_needed = q2(
-                pending_costs
-                + projected_reorders_cost
-                + next_sales_tax_remit
-                + reserved_deferred
-                + p["min_cash_reserve"]
-            )
-
-            excess_cash = q2(cash - buffer_needed)
-            distribution = q2(max(0.0, excess_cash) * p["sweep_pct"])
+            buffer_needed = q2(pending_costs + projected_reorders_cost + next_sales_tax_remit + p["min_cash_reserve"] + must_hold_prepaid)
+            excess_cash   = q2(cash - buffer_needed)
+            distribution  = q2(max(0.0, excess_cash) * p["sweep_pct"])
             if distribution > 0:
                 cash = q2(cash - distribution)
                 cumulative_distributions = q2(cumulative_distributions + distribution)
@@ -461,9 +450,6 @@ def run_simulation(p):
             "Stage 1 Shipped":        ship_mon_filled[1] + ship_pre_filled[1],
             "Stage 2 Shipped":        ship_mon_filled[2] + ship_pre_filled[2],
             "Stage 3 Shipped":        ship_mon_filled[3] + ship_pre_filled[3],
-            "Backorder S1":           backorder_mon[1] + backorder_pre[1],
-            "Backorder S2":           backorder_mon[2] + backorder_pre[2],
-            "Backorder S3":           backorder_mon[3] + backorder_pre[3],
             "Inv S1":                 inventory[1],
             "Inv S2":                 inventory[2],
             "Inv S3":                 inventory[3],
@@ -479,12 +465,12 @@ def run_simulation(p):
             "Operating Expenses":     op_expenses,
             "Operating Income":       op_inc,
             "Tax Expense":            tax_expense,
-            "Net Income":             net_inc_after_tax,
+            "Net Income":             net_inc_after_tax,  # after-tax
             "CAC":                    cac,
             "Shipping Exp":           shipping_exp,
             "Net Cash Flow":          net_cash,
             "Cash Balance":           cash,
-            "Taxes Payable":          taxes_payable,
+            "Taxes Payable":          taxes_payable,      # income tax payable
             "Sales Tax Collected":    sales_tax_collected,
             "Sales Tax Remitted":     sales_tax_remitted,
             "Sales Tax Payable":      sales_tax_payable,
@@ -517,13 +503,13 @@ def build_financials(df, p):
     bs = pd.DataFrame({"Cash Balance": df["Cash Balance"]})
     bs["Inventory Value"]      = df["Inventory Value"] + df["Transit Value"]
     bs["Unearned Revenue"]     = df["Deferred Rev Balance"]
-    bs["Taxes Payable"]        = df["Taxes Payable"]            # income taxes (entity)
+    bs["Taxes Payable"]        = df["Taxes Payable"]            # income taxes
     bs["Sales Tax Payable"]    = df.get("Sales Tax Payable", 0) # sales tax
     bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory Value"]
     bs["Total Liabilities"]    = bs["Unearned Revenue"] + bs["Taxes Payable"] + bs["Sales Tax Payable"]
 
     bs["Paid-in Capital"]      = p["initial_inventory_cost"]
-    bs["Retained Earnings"]    = df["Net Income"].cumsum()      # after entity tax
+    bs["Retained Earnings"]    = df["Net Income"].cumsum()      # after-tax
     bs["Member Distributions"] = df.get("Distribution", 0).cumsum()  # equity reduction
     bs["Total Equity"]         = bs["Paid-in Capital"] + bs["Retained Earnings"] - bs["Member Distributions"]
 
@@ -538,7 +524,7 @@ def build_financials(df, p):
         "Operating Expenses": df["Operating Expenses"],  # CAC + Shipping
         "Operating Income":   df["Operating Income"],
         "Tax Expense":        df["Tax Expense"],
-        "Net Income":         df["Net Income"],          # after entity tax
+        "Net Income":         df["Net Income"],          # after-tax
     })
     annual_is = is_df.head(12).sum().to_frame().T
     annual_is.index = ["Year 1"]
@@ -564,12 +550,12 @@ bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
 fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
 
-# ─── Monthly Simulation Details (Taxes Payable removed) ───────────────────────
+# ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
 display_df = sim_df.drop(columns=["Transit Value"])
 display_cols = [
     "New Monthly Subs", "New Prepaid Subs",
     "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
-    "Backorder S1", "Backorder S2", "Backorder S3",
+    # Backorder columns removed per request
     "Total Shipments", "Total Subscribers", "Total Prepaid Subs",
     "Inv S1", "Inv S2", "Inv S3",
     "Inventory Value",
@@ -579,11 +565,11 @@ display_cols = [
     "Operating Expenses",
     "Operating Income",
     "Tax Expense",
-    "Net Income",
+    "Net Income",           # after-tax
     "Reorder Cost",
     "Sales Tax Collected", "Sales Tax Remitted", "Sales Tax Payable",
     "Net Cash Flow",
-    "Distribution", "Cumulative Distributions",
+    "Distribution",
     "Cash Balance", "Deferred Rev Balance"
 ]
 display_cols = [c for c in display_cols if c in display_df.columns]
@@ -595,6 +581,10 @@ st.dataframe(
         .format(fmt_int, subset=display_df.select_dtypes("int").columns)
         .format(fmt_flt, subset=display_df.select_dtypes("float").columns)
 )
+
+# ─── Annual Income Statement (move ABOVE 3-month BS) ─────────────────────────
+st.subheader("Annual Income Statement")
+st.dataframe(annual_is_df.style.format(fmt_flt))
 
 # ─── 3-Month Balance Sheet View ──────────────────────────────────────────────
 start_month = st.sidebar.number_input(
@@ -640,12 +630,40 @@ st.subheader("Balance Sheet (3-Month View) — Change Starting Month in Sidebar"
 height_px = (len(df3) + 1) * 35
 st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 
-# ─── Annual Income Statement ─────────────────────────────────────────────────
-st.subheader("Annual Income Statement")
-st.dataframe(annual_is_df.style.format(fmt_flt))
+# ─── Owner Distributions (MOVE above 12-month BS) ────────────────────────────
+st.subheader("Owner Distributions")
 
-# ─── 12-Month Balance Sheet (Expander) ───────────────────────────────────────
-with st.expander("📊 Balance Sheet (Months 1–12)"):
+# Build view limited to months with a distribution
+dist_cols = ["Distribution"]
+dist_df = sim_df.loc[sim_df["Distribution"] > 0, dist_cols].copy()
+
+if dist_df.empty:
+    st.info("No owner distributions occurred in the simulated period.")
+else:
+    # Personal taxes & take-home
+    dist_df["Est Personal Tax"] = (dist_df["Distribution"] * params["owner_personal_tax_rate"]).round(2)
+    dist_df["Take Home"] = (dist_df["Distribution"] - dist_df["Est Personal Tax"]).round(2)
+    dist_df["Cumulative Distribution"] = dist_df["Distribution"].cumsum().round(2)
+    dist_df["Cumulative Take Home"] = dist_df["Take Home"].cumsum().round(2)
+
+    pretty_cols = ["Distribution", "Est Personal Tax", "Take Home", "Cumulative Distribution", "Cumulative Take Home"]
+    st.dataframe(dist_df[pretty_cols].style.format("{:,.2f}"))
+
+    total_dist = float(dist_df["Distribution"].sum())
+    total_take = float(dist_df["Take Home"].sum())
+    col1, col2 = st.columns(2)
+    col1.metric("Total Owner Distributions", f"${total_dist:,.2f}")
+    col2.metric("Total Take Home", f"${total_take:,.2f}")
+
+# ─── Monthly Cash Flow Statement (expandable, BEFORE 12-month BS) ────────────
+with st.expander("📈 Monthly Cash Flow Statement"):
+    st.dataframe(
+        cf_df.style
+             .format(fmt_flt)
+    )
+
+# ─── 12-month Balance Sheet (after owner distributions & CF) ─────────────────
+with st.expander("📊 Balance Sheet (Months 1-12)"):
     bs_order = [
         "Cash Balance",
         "Inventory Value",
@@ -667,51 +685,7 @@ with st.expander("📊 Balance Sheet (Months 1–12)"):
             .format(fmt_flt)
     )
 
-# ─── Owner Distributions — Take-Home (est.) ──────────────────────────────────
-st.subheader("Owner Distributions — Take-Home (est.)")
-
-if "Distribution" in sim_df:
-    base_dist = sim_df.loc[sim_df["Distribution"] > 0, ["Distribution"]].copy()
-else:
-    base_dist = pd.DataFrame(columns=["Distribution"])
-
-if base_dist.empty:
-    st.info("No member distributions occurred in the simulated period.")
-    total_owner_dist = 0.0
-    total_owner_take = 0.0
-else:
-    # Exact five columns requested
-    base_dist["Owner Distribution"] = base_dist["Distribution"] * owner_equity_share
-    base_dist["Est. Tax"] = base_dist["Owner Distribution"] * owner_eff_tax_rate
-    base_dist["Take-Home"] = base_dist["Owner Distribution"] - base_dist["Est. Tax"]
-    base_dist["Cumulative Distribution"] = base_dist["Owner Distribution"].cumsum()
-    base_dist["Cumulative Take-Home"] = base_dist["Take-Home"].cumsum()
-
-    show_cols = [
-        "Owner Distribution", "Est. Tax", "Take-Home",
-        "Cumulative Distribution", "Cumulative Take-Home"
-    ]
-    st.dataframe(
-        base_dist[show_cols].style.format({
-            "Owner Distribution": "{:,.2f}",
-            "Est. Tax": "{:,.2f}",
-            "Take-Home": "{:,.2f}",
-            "Cumulative Distribution": "{:,.2f}",
-            "Cumulative Take-Home": "{:,.2f}",
-        })
-    )
-
-    total_owner_dist = float(base_dist["Owner Distribution"].sum())
-    total_owner_take = float(base_dist["Take-Home"].sum())
-
-# Totals side-by-side under table
-c1, c2 = st.columns(2)
-with c1:
-    st.metric("Total Owner Distribution", f"${total_owner_dist:,.2f}")
-with c2:
-    st.metric("Total Owner Take-Home", f"${total_owner_take:,.2f}")
-
-# ─── All calculation methods ─────────────────────────────────────────────────
+# All calculation methods
 with st.expander("📋 All Calculation Methods"):
     st.markdown(r"""
     ### Revenue Recognition
@@ -727,7 +701,7 @@ with st.expander("📋 All Calculation Methods"):
     - **Outbound Shipping** included in Operating Expenses (not COGS).
 
     ### Income Taxes (Entity Level)
-    - **Tax Expense** = max(Operating Income, 0) × entity tax rate; accrued monthly (optional cash payment).
+    - **Tax Expense** = max(Operating Income, 0) × effective tax rate; accrued monthly (optional cash payment).
 
     ### Sales Tax (Pass-through)
     - Collected from customers (if taxable), recorded as **Sales Tax Payable**, not revenue; remitted per schedule.
@@ -740,9 +714,13 @@ with st.expander("📋 All Calculation Methods"):
     ### Equity & Distributions
     - **Paid-in Capital**: initial financing.
     - **Retained Earnings**: cumulative **after-tax** income.
-    - **Member Distributions**: owner draws (cash sweep), reduce equity (not expenses).
-    - **Sweep buffers**: pending & forecasted POs, next sales-tax remit, a reserve of deferred revenue, and minimum cash reserve.
-    - **Owner take-home (est.)**: Owner Distribution × (1 − Owner personal effective tax rate).
+    - **Member Distributions (Sweeps)**: paid from **excess cash** after buffers:
+        - pending POs in pipeline,
+        - projected reorders within the horizon,
+        - next sales-tax remittance if not monthly,
+        - minimum cash reserve,
+        - plus a **prepaid cash holdback** = Deferred Revenue × (1 − Max % of deferred usable).
+      Amount swept may be further scaled by **Distribute % of excess cash**.
 
     ### Balance Sheet Identity
     - **Assets** = Cash + Inventory (on-hand + in-transit).
@@ -751,9 +729,8 @@ with st.expander("📋 All Calculation Methods"):
     - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
 
-# ─── Quick Print & Download (includes Owner Take-Home + 12-mo BS) ────────────
+# ─── Quick Print & Download (incl. Owner Distribution totals) ────────────────
 settings_map = {
-    "supplier_model":         "Fulfillment Model",
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
     "initial_prepaid":        "Initial Prepaid Subs",
@@ -773,6 +750,7 @@ settings_map = {
     "start_stage_dist":       "Start Stage %",
     "ship1_dist":             "Pct Ship Stage 1 Initial",
     "simulation_months":      "Simulation Months",
+    # New settings in print
     "effective_tax_rate":     "Effective Entity Tax Rate",
     "pay_taxes_now":          "Pay Income Taxes Monthly?",
     "collect_sales_tax":      "Collect Sales Tax (sim)",
@@ -783,7 +761,8 @@ settings_map = {
     "min_cash_reserve":       "Minimum Cash Reserve ($)",
     "sweep_horizon_months":   "Cash Sweep Horizon (mo)",
     "sweep_pct":              "Distribute % of Excess Cash",
-    "restricted_deferred_pct":"Reserve % of Deferred Revenue",
+    "max_prepaid_draw_pct":   "Max % Deferred usable",
+    "owner_personal_tax_rate":"Owner Personal Tax Rate",
 }
 _settings = {k: params.get(k) for k in settings_map.keys()}
 for k in ("initial_inventory", "reorder_cost", "start_stage_dist", "ship1_dist"):
@@ -796,7 +775,8 @@ _settings["avg_effective_sales_tax"] = f"{params['avg_effective_sales_tax']:.3%}
 _settings["taxable_sales_fraction"] = f"{params['taxable_sales_fraction']:.2%}"
 _settings["enable_cash_sweep"] = "Yes" if params["enable_cash_sweep"] else "No"
 _settings["sweep_pct"] = f"{params['sweep_pct']:.0%}"
-_settings["restricted_deferred_pct"] = f"{params['restricted_deferred_pct']:.0%}"
+_settings["max_prepaid_draw_pct"] = f"{params['max_prepaid_draw_pct']:.0%}"
+_settings["owner_personal_tax_rate"] = f"{params['owner_personal_tax_rate']:.0%}"
 
 settings_html = dict_to_html_table(_settings, settings_map)
 
@@ -823,16 +803,6 @@ monthly_html = f'<div class="monthly-wrap">{monthly_html_core}</div>'
 _annual_formatters = {c: _fmt_flt for c in annual_is_df.columns}
 annual_is_html = annual_is_df.to_html(index=True, border=0, formatters=_annual_formatters)
 
-# Owner Distributions (print)
-if 'base_dist' in locals() and not base_dist.empty:
-    owner_print_df = base_dist[[
-        "Owner Distribution", "Est. Tax", "Take-Home",
-        "Cumulative Distribution", "Cumulative Take-Home"
-    ]]
-    owner_print_html = owner_print_df.to_html(index=True, border=0, formatters={c:_fmt_flt for c in owner_print_df.columns})
-else:
-    owner_print_html = "<p>No member distributions occurred in the simulated period.</p>"
-
 # 12-month Balance Sheet
 bs12_order = [
     "Cash Balance",
@@ -852,6 +822,26 @@ bs12_order = [
 _bs12 = bs_df[bs12_order]
 _bs12_formatters = {c: _fmt_flt for c in _bs12.columns}
 bs12_html = _bs12.to_html(index=True, border=0, formatters=_bs12_formatters)
+
+# Owner distributions (for print)
+if "Distribution" in sim_df.columns:
+    dist_print = sim_df.loc[sim_df["Distribution"] > 0, ["Distribution"]].copy()
+    if not dist_print.empty:
+        dist_print["Est Personal Tax"] = (dist_print["Distribution"] * params["owner_personal_tax_rate"]).round(2)
+        dist_print["Take Home"] = (dist_print["Distribution"] - dist_print["Est Personal Tax"]).round(2)
+        dist_print["Cumulative Distribution"] = dist_print["Distribution"].cumsum().round(2)
+        dist_print["Cumulative Take Home"] = dist_print["Take Home"].cumsum().round(2)
+        dist_print_html = dist_print.to_html(index=True, border=0, formatters={c:_fmt_flt for c in dist_print.columns})
+        total_dist_print = float(dist_print["Distribution"].sum())
+        total_take_print = float(dist_print["Take Home"].sum())
+    else:
+        dist_print_html = "<p>No owner distributions occurred in the simulated period.</p>"
+        total_dist_print = 0.0
+        total_take_print = 0.0
+else:
+    dist_print_html = "<p>No owner distributions occurred in the simulated period.</p>"
+    total_dist_print = 0.0
+    total_take_print = 0.0
 
 # 1/8" print margins + landscape for width
 force_landscape = True
@@ -879,17 +869,17 @@ print_doc = f"""<!doctype html>
       border-collapse: collapse;
       width: 100%;
       margin: 8px 0 24px;
-      table-layout: auto;
+      table-layout: auto;         /* natural widths so numbers aren't cut */
       font-size: 13px;
       max-width: none;
     }}
     th, td {{
       border: 1px solid #ddd;
-      padding: 12px 10px;
-      line-height: 1.5;
+      padding: 12px 10px;         /* taller rows */
+      line-height: 1.5;           /* more vertical space */
       text-align: left;
       vertical-align: middle;
-      white-space: nowrap;
+      white-space: nowrap;        /* keep numbers on one line */
       overflow: visible;
       text-overflow: clip;
     }}
@@ -902,8 +892,8 @@ print_doc = f"""<!doctype html>
     .pagebreak {{ page-break-before: always; }}
 
     @media print {{
-      body {{ padding: 0; }}
-      .noprint {{ display: none !important; }}
+      body {{ padding: 0; }}      /* rely on @page margins when printing */
+      .noprint {{ display: none !important; }}  /* hide button on paper */
       table {{ font-size: 12.25px; }}
       th, td {{ padding: 10px 8px; line-height: 1.45; }}
       .monthly-wrap {{
@@ -918,6 +908,16 @@ print_doc = f"""<!doctype html>
       display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px;
     }}
     .small {{ font-size: 12px; color: #555; }}
+
+    .totals-row {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 4px;
+    }}
+    .total-card {{
+      padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; background:#fafafa;
+    }}
   </style>
 </head>
 <body>
@@ -938,8 +938,12 @@ print_doc = f"""<!doctype html>
   {annual_is_html}
 
   <div class="pagebreak"></div>
-  <h2>Owner Distributions — Take-Home (est.)</h2>
-  {owner_print_html}
+  <h2>Owner Distributions</h2>
+  {dist_print_html}
+  <div class="totals-row">
+    <div class="total-card"><strong>Total Owner Distributions:</strong> ${total_dist_print:,.2f}</div>
+    <div class="total-card"><strong>Total Take Home:</strong> ${total_take_print:,.2f}</div>
+  </div>
 
   <div class="pagebreak"></div>
   <h2>Balance Sheet (Months 1–12)</h2>
@@ -952,7 +956,7 @@ print_doc = f"""<!doctype html>
 </html>"""
 
 # Button and download
-if st.button("🖨️ Quick Print (Settings + Monthly + Annual IS + Owner Take-Home + 12-Mo BS)"):
+if st.button("🖨️ Quick Print (Settings + Monthly + Annual IS + Owner Dist + 12-Mo BS)"):
     components.html(
         f"""
         <script>
@@ -974,14 +978,14 @@ st.download_button(
     mime="text/html"
 )
 
-# ─── Audit Checks (at bottom) ────────────────────────────────────────────────
+# ─── Audit Checks (bottom) ───────────────────────────────────────────────────
 st.divider()
 st.subheader("🔎 Audit Checks")
 
 audit = {}
 df = sim_df.copy()
 
-# 1) Statement identities (per month)
+# 1) Statement identities (per month, to the cent)
 audit["Gross Profit tie"] = (df["Total Revenue"] - df["Total COGS"] - df["Gross Profit"]).round(2)
 audit["OpEx tie"]         = (df["CAC"] + df["Shipping Exp"] - df["Operating Expenses"]).round(2)
 audit["OpInc tie"]        = (df["Gross Profit"] - df["Operating Expenses"] - df["Operating Income"]).round(2)
