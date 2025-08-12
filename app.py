@@ -429,6 +429,62 @@ with st.expander("📈 Monthly Cash Flow Statement"):
         cf_df.style
              .format(fmt_flt)
     )
+    
+# Insert this at the bottom of your Streamlit script, after your last st.dataframe() call
+with st.expander("📋 All Calculation Methods"):
+    st.markdown(r"""
+    ### Subscriber Growth and Shipments
+    - **Total Active Subscribers**: count of all current monthly and prepaid subscribers
+    - **Estimated New Subscribers** = Total Active Subscribers × Monthly Growth Rate
+    - **New Prepaid Subscriptions** = Estimated New Subscribers × Percent Prepaid
+    - **New Monthly Subscriptions** = Estimated New Subscribers × (1 − Percent Prepaid)
+    - **Shipment Breakdown by Stage**:
+      - Stage 1 shipment count
+      - Stage 2 shipment count
+      - Stage 3 shipment count
+
+    ### Inventory Management
+    - **End‑of‑Month Inventory for Each Stage** = Previous Month Inventory + New Arrivals − Total Shipments for the Stage
+    - **Safety Stock Threshold** = Ceiling of [(Current Month Shipments + (Current Month Shipments × Lead Time in Months)) × Safety Factor]
+    - **Reorder Trigger**: when inventory for a stage ≤ Safety Stock Threshold, an order of the Reorder Quantity is placed at the fixed stage reorder cost, arriving after the lead time.
+
+    ### Pricing & Cost of Goods Sold (COGS)
+    - **Effective Prepaid Pack Price** = Standard Pack Price × (1 − Prepaid Discount Rate)
+    - **Average Cost per Pack** = Total Inventory Value ÷ Total Packs on Hand
+    - **COGS** = (Total Monthly Packs Shipped + Total Prepaid Packs Shipped) × Average Cost per Pack
+
+    ### Revenue & Profit
+    - **Monthly Subscription Revenue** = Total Monthly Packs Shipped × Standard Pack Price
+    - **Prepaid Revenue Recognized** = Total Prepaid Packs Shipped × Effective Prepaid Pack Price
+    - **Total Revenue** = Monthly Subscription Revenue + Prepaid Revenue Recognized
+    - **Gross Profit** = Total Revenue − COGS
+
+    ### Operating Expenses
+    - **Customer Acquisition Cost (CAC)** = (New Monthly Subscriptions × Monthly CAC) + (New Prepaid Subscriptions × Prepaid CAC)
+    - **Operating Income** = Gross Profit − Customer Acquisition Cost
+    - **Shipping Expense** = (Total Monthly Packs Shipped + Total Prepaid Packs Shipped) × Shipping Cost per Pack
+    - **Net Income** = Operating Income − Shipping Expense
+
+    ### Reorder Costs
+    - **Reorder Cost** = Sum of fixed reorder fees for each stage reorder event in the month
+
+    ### Cash Flow
+    - **Deferred Revenue Balance** = Outstanding prepaid revenue not yet recognized
+    - **Change in Deferred Revenue** = This Month’s Deferred Revenue Balance − Last Month’s Deferred Revenue Balance
+    - **Cash Inflow from Sales** = Total Revenue
+    - **Cash Outflow for Expenses** = Customer Acquisition Cost + Shipping Expense
+    - **Net Cash Flow** = Cash Inflow from Sales − Cash Outflow for Expenses − Reorder Cost + Change in Deferred Revenue
+    - **Cash Balance** = Previous Cash Balance + Net Cash Flow
+
+    ### Balance Sheet Overview
+    - **Cash Balance**: Cumulative cash available at period end
+    - **Inventory Value**: Sum of on‑hand pack value and inventory in transit
+    - **Unearned Revenue**: Deferred Revenue Balance under liabilities
+    - **Paid‑in Capital**: Initial inventory financing amount
+    - **Retained Earnings**: Cumulative sum of Net Income over time
+    - **Total Equity**: Paid‑in Capital + Retained Earnings
+    - **Total Liabilities and Equity**: Unearned Revenue + Total Equity (matches Total Assets)
+    """ )
 # --- Quick Print Button (place near the bottom, after tables are built) ---
 import streamlit.components.v1 as components
 from datetime import datetime
@@ -559,60 +615,4 @@ st.download_button(
     file_name="BareBump_Quick_Report.html",
     mime="text/html"
 )
-
-# Insert this at the bottom of your Streamlit script, after your last st.dataframe() call
-with st.expander("📋 All Calculation Methods"):
-    st.markdown(r"""
-    ### Subscriber Growth and Shipments
-    - **Total Active Subscribers**: count of all current monthly and prepaid subscribers
-    - **Estimated New Subscribers** = Total Active Subscribers × Monthly Growth Rate
-    - **New Prepaid Subscriptions** = Estimated New Subscribers × Percent Prepaid
-    - **New Monthly Subscriptions** = Estimated New Subscribers × (1 − Percent Prepaid)
-    - **Shipment Breakdown by Stage**:
-      - Stage 1 shipment count
-      - Stage 2 shipment count
-      - Stage 3 shipment count
-
-    ### Inventory Management
-    - **End‑of‑Month Inventory for Each Stage** = Previous Month Inventory + New Arrivals − Total Shipments for the Stage
-    - **Safety Stock Threshold** = Ceiling of [(Current Month Shipments + (Current Month Shipments × Lead Time in Months)) × Safety Factor]
-    - **Reorder Trigger**: when inventory for a stage ≤ Safety Stock Threshold, an order of the Reorder Quantity is placed at the fixed stage reorder cost, arriving after the lead time.
-
-    ### Pricing & Cost of Goods Sold (COGS)
-    - **Effective Prepaid Pack Price** = Standard Pack Price × (1 − Prepaid Discount Rate)
-    - **Average Cost per Pack** = Total Inventory Value ÷ Total Packs on Hand
-    - **COGS** = (Total Monthly Packs Shipped + Total Prepaid Packs Shipped) × Average Cost per Pack
-
-    ### Revenue & Profit
-    - **Monthly Subscription Revenue** = Total Monthly Packs Shipped × Standard Pack Price
-    - **Prepaid Revenue Recognized** = Total Prepaid Packs Shipped × Effective Prepaid Pack Price
-    - **Total Revenue** = Monthly Subscription Revenue + Prepaid Revenue Recognized
-    - **Gross Profit** = Total Revenue − COGS
-
-    ### Operating Expenses
-    - **Customer Acquisition Cost (CAC)** = (New Monthly Subscriptions × Monthly CAC) + (New Prepaid Subscriptions × Prepaid CAC)
-    - **Operating Income** = Gross Profit − Customer Acquisition Cost
-    - **Shipping Expense** = (Total Monthly Packs Shipped + Total Prepaid Packs Shipped) × Shipping Cost per Pack
-    - **Net Income** = Operating Income − Shipping Expense
-
-    ### Reorder Costs
-    - **Reorder Cost** = Sum of fixed reorder fees for each stage reorder event in the month
-
-    ### Cash Flow
-    - **Deferred Revenue Balance** = Outstanding prepaid revenue not yet recognized
-    - **Change in Deferred Revenue** = This Month’s Deferred Revenue Balance − Last Month’s Deferred Revenue Balance
-    - **Cash Inflow from Sales** = Total Revenue
-    - **Cash Outflow for Expenses** = Customer Acquisition Cost + Shipping Expense
-    - **Net Cash Flow** = Cash Inflow from Sales − Cash Outflow for Expenses − Reorder Cost + Change in Deferred Revenue
-    - **Cash Balance** = Previous Cash Balance + Net Cash Flow
-
-    ### Balance Sheet Overview
-    - **Cash Balance**: Cumulative cash available at period end
-    - **Inventory Value**: Sum of on‑hand pack value and inventory in transit
-    - **Unearned Revenue**: Deferred Revenue Balance under liabilities
-    - **Paid‑in Capital**: Initial inventory financing amount
-    - **Retained Earnings**: Cumulative sum of Net Income over time
-    - **Total Equity**: Paid‑in Capital + Retained Earnings
-    - **Total Liabilities and Equity**: Unearned Revenue + Total Equity (matches Total Assets)
-    """ )
 
