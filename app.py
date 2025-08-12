@@ -98,12 +98,15 @@ if preset == "NutraCap":
         min_cash_reserve=12000
     )
 else:
-    # Your prior general defaults
+    # General defaults
     DEF = dict(
         rqty=833, inv1=833, inv2=833, inv3=833,
         inv_cost=98250, rcost1=32750, rcost2=32750, rcost3=32750,
         min_cash_reserve=32750
     )
+
+# Show selected preset under the main title
+st.caption(f"Preset: {preset}")
 
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
@@ -210,7 +213,7 @@ init_unit_cost = (params["initial_inventory_cost"] / total_init_units) if total_
 reorder_unit_costs = {s: (params["reorder_cost"][s] / params["reorder_qty"] if params["reorder_qty"] else 0)
                       for s in (1,2,3)}
 st.caption(
-    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack  "
+    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack"
 )
 
 # ─── Core Simulation ─────────────────────────────────────────────────────────
@@ -553,7 +556,7 @@ display_df = sim_df.drop(columns=["Transit Value"])
 display_cols = [
     "New Monthly Subs", "New Prepaid Subs",
     "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
-    # Backorder columns removed per request
+    # Backorder columns removed
     "Total Shipments", "Total Subscribers", "Total Prepaid Subs",
     "Inv S1", "Inv S2", "Inv S3",
     "Inventory Value",
@@ -580,7 +583,7 @@ st.dataframe(
         .format(fmt_flt, subset=display_df.select_dtypes("float").columns)
 )
 
-# ─── Annual Income Statement (move ABOVE 3-month BS) ─────────────────────────
+# ─── Annual Income Statement (above 3-month BS) ──────────────────────────────
 st.subheader("Annual Income Statement")
 st.dataframe(annual_is_df.style.format(fmt_flt))
 
@@ -628,10 +631,8 @@ st.subheader("Balance Sheet (3-Month View) — Change Starting Month in Sidebar"
 height_px = (len(df3) + 1) * 35
 st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 
-# ─── Owner Distributions (MOVE above 12-month BS) ────────────────────────────
+# ─── Owner Distributions (above 12-month BS) ─────────────────────────────────
 st.subheader("Owner Distributions")
-
-# Build view limited to months with a distribution
 dist_cols = ["Distribution"]
 dist_df = sim_df.loc[sim_df["Distribution"] > 0, dist_cols].copy()
 
@@ -647,11 +648,22 @@ else:
     pretty_cols = ["Distribution", "Est Personal Tax", "Take Home", "Cumulative Distribution", "Cumulative Take Home"]
     st.dataframe(dist_df[pretty_cols].style.format("{:,.2f}"))
 
+    # Totals under the table (includes Total Personal Taxes)
     total_dist = float(dist_df["Distribution"].sum())
+    total_owner_tax = float(dist_df["Est Personal Tax"].sum())
     total_take = float(dist_df["Take Home"].sum())
-    col1, col2 = st.columns(2)
-    col1.metric("Total Owner Distributions", f"${total_dist:,.2f}")
-    col2.metric("Total Take Home", f"${total_take:,.2f}")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Owner Distributions", f"${total_dist:,.2f}")
+    c2.metric("Total Personal Taxes (est.)", f"${total_owner_tax:,.2f}")
+    c3.metric("Total Take Home", f"${total_take:,.2f}")
+
+# ─── Monthly Cash Flow Statement (BEFORE 12-month BS) ────────────────────────
+with st.expander("📈 Monthly Cash Flow Statement"):
+    st.dataframe(
+        cf_df.style
+             .format(fmt_flt)
+    )
 
 # ─── 12-month Balance Sheet (after owner distributions & CF) ─────────────────
 with st.expander("📊 Balance Sheet (Months 1-12)"):
@@ -675,14 +687,7 @@ with st.expander("📊 Balance Sheet (Months 1-12)"):
             .style
             .format(fmt_flt)
     )
-    
-# ─── Monthly Cash Flow Statement (expandable, BEFORE 12-month BS) ────────────
-with st.expander("📈 Monthly Cash Flow Statement"):
-    st.dataframe(
-        cf_df.style
-             .format(fmt_flt)
-    )
-    
+
 # All calculation methods
 with st.expander("📋 All Calculation Methods"):
     st.markdown(r"""
@@ -699,27 +704,34 @@ with st.expander("📋 All Calculation Methods"):
     - **Outbound Shipping** included in Operating Expenses (not COGS).
 
     ### Income Taxes (Entity Level)
-    - **Tax Expense** = max(Operating Income, 0) × effective tax rate; accrued monthly (optional cash payment).
+    - Default for a GA **LLC (pass-through)** is **no entity-level income tax**. Toggle **“Entity pays state income tax”** only if you elect a PTE/C-corp treatment or similar.
+    - **Tax Expense** (entity) = max(Operating Income, 0) × effective tax rate; accrued monthly; optionally paid monthly.
 
     ### Sales Tax (Pass-through)
     - Collected from customers (if taxable), recorded as **Sales Tax Payable**, not revenue; remitted per schedule.
 
     ### Cash Flow (Operating)
-    - **Operating Cash Flow** = Monthly revenue cash − CAC − Shipping − Inventory purchases − Income Taxes Paid
-      + **ΔDeferred Revenue** + **Sales Tax Collected − Sales Tax Remitted**.
-    - Reorders reduce cash when ordered; inventory value increases when arriving (in-transit → on-hand).
+    - **Operating Cash Flow** = Monthly revenue cash − CAC − Shipping − Income Taxes Paid
+      + **ΔDeferred Revenue** + **Sales Tax Collected − Sales Tax Remitted**
+      − **Reorder cash outflows** when POs are placed.
 
-    ### Equity & Distributions
+    ### Equity & Distributions (Sweeps)
     - **Paid-in Capital**: initial financing.
     - **Retained Earnings**: cumulative **after-tax** income.
-    - **Member Distributions (Sweeps)**: paid from **excess cash** after buffers:
-        - pending POs in pipeline,
-        - projected reorders within the horizon,
-        - next sales-tax remittance if not monthly,
-        - minimum cash reserve,
-        - plus a **prepaid cash holdback** = Deferred Revenue × (1 − Max % of deferred usable).
-      Amount swept may be further scaled by **Distribute % of excess cash**.
+    - **Owner Distributions (sweeps)**: only from **excess cash** after buffers:
+        1) POs already in pipeline,
+        2) Projected reorders over the chosen horizon,
+        3) Next sales-tax remittance (if not monthly),
+        4) Minimum cash reserve,
+        5) **Prepaid holdback** = Deferred Revenue × (1 − Max % of deferred usable).
+      The available excess is then multiplied by **Distribute % of excess cash**.
 
+    ### Owner Personal Taxes (Fed + GA + Self-Employment; simplified)
+    - We estimate **personal taxes** on distributions using your slider **Owner effective personal tax rate**.
+    - **Est Personal Tax** = Distribution × Owner Personal Tax Rate.
+    - **Take Home** = Distribution − Est Personal Tax.
+    - This is an **estimate** for planning only; consult your CPA for filing specifics.
+    
     ### Balance Sheet Identity
     - **Assets** = Cash + Inventory (on-hand + in-transit).
     - **Liabilities** = Unearned Revenue + Income Taxes Payable + Sales Tax Payable.
@@ -727,8 +739,9 @@ with st.expander("📋 All Calculation Methods"):
     - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
 
-# ─── Quick Print & Download (incl. Owner Distribution totals) ────────────────
+# ─── Quick Print & Download (incl. preset + Owner Distribution totals) ───────
 settings_map = {
+    "supplier_preset":        "Supplier Preset",
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
     "initial_prepaid":        "Initial Prepaid Subs",
@@ -762,7 +775,7 @@ settings_map = {
     "max_prepaid_draw_pct":   "Max % Deferred usable",
     "owner_personal_tax_rate":"Owner Personal Tax Rate",
 }
-_settings = {k: params.get(k) for k in settings_map.keys()}
+_settings = {k: (preset if k=="supplier_preset" else params.get(k)) for k in settings_map.keys()}
 for k in ("initial_inventory", "reorder_cost", "start_stage_dist", "ship1_dist"):
     _settings[k] = fmt_nested(_settings[k])
 _settings["effective_tax_rate"] = f"{params['effective_tax_rate']:.2%}"
@@ -831,14 +844,17 @@ if "Distribution" in sim_df.columns:
         dist_print["Cumulative Take Home"] = dist_print["Take Home"].cumsum().round(2)
         dist_print_html = dist_print.to_html(index=True, border=0, formatters={c:_fmt_flt for c in dist_print.columns})
         total_dist_print = float(dist_print["Distribution"].sum())
+        total_owner_tax_print = float(dist_print["Est Personal Tax"].sum())
         total_take_print = float(dist_print["Take Home"].sum())
     else:
         dist_print_html = "<p>No owner distributions occurred in the simulated period.</p>"
         total_dist_print = 0.0
+        total_owner_tax_print = 0.0
         total_take_print = 0.0
 else:
     dist_print_html = "<p>No owner distributions occurred in the simulated period.</p>"
     total_dist_print = 0.0
+    total_owner_tax_print = 0.0
     total_take_print = 0.0
 
 # 1/8" print margins + landscape for width
@@ -909,7 +925,7 @@ print_doc = f"""<!doctype html>
 
     .totals-row {{
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 16px;
       margin-top: 4px;
     }}
@@ -921,7 +937,7 @@ print_doc = f"""<!doctype html>
 <body>
   <div class="header">
     <h1>BareBump – Quick Report</h1>
-    <div class="small">Generated: {generated_ts}</div>
+    <div class="small">Generated: {generated_ts} • Preset: {preset}</div>
   </div>
 
   <h2>Simulation Settings</h2>
@@ -940,6 +956,7 @@ print_doc = f"""<!doctype html>
   {dist_print_html}
   <div class="totals-row">
     <div class="total-card"><strong>Total Owner Distributions:</strong> ${total_dist_print:,.2f}</div>
+    <div class="total-card"><strong>Total Personal Taxes (est.):</strong> ${total_owner_tax_print:,.2f}</div>
     <div class="total-card"><strong>Total Take Home:</strong> ${total_take_print:,.2f}</div>
   </div>
 
