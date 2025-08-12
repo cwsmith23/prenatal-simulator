@@ -119,7 +119,7 @@ months        = st.sidebar.number_input("Simulation Months", 1, 36, 12)
 
 # Entity-level income tax (LLC: off unless you simulate PTE/C-corp)
 tax_rate      = st.sidebar.slider("Income Tax Rate (entity-level)", 0.0, 1.0, 0.21, step=0.01, format="%.2f")
-pay_taxes_now = st.sidebar.checkbox("Pay Income Taxes Monthly (else accrue)", value=False)
+pay_taxes_now = st.sidebar.checkbox("Pay Income Taxes Monthly (else accrue)", value=True)
 
 # Sales tax & distributions
 collect_sales_tax = st.sidebar.checkbox("Collect sales tax nationwide (simulated)", True)
