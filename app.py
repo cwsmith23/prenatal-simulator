@@ -1,8 +1,11 @@
 import streamlit as st
 import pandas as pd
 import math
+import streamlit.components.v1 as components
+from datetime import datetime
+import html
 
-
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 def allocate_with_remainder(total, fractions):
     """Allocate integer counts from a total based on fractional weights."""
     allocations = {k: 0 for k in fractions}
@@ -21,9 +24,30 @@ def allocate_with_remainder(total, fractions):
 
     return allocations
 
+def fmt_val(v):
+    if isinstance(v, int):
+        return f"{v:,}"
+    if isinstance(v, float):
+        return f"{v:,.2f}"
+    return str(v)
 
+def dict_to_html_table(d: dict, title_map: dict = None) -> str:
+    """Render a simple 2-col HTML table from a dict."""
+    rows = []
+    for k, v in d.items():
+        label = title_map.get(k, k) if title_map else k
+        rows.append(f"<tr><th>{html.escape(str(label))}</th><td>{html.escape(fmt_val(v))}</td></tr>")
+    return "<table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+
+def fmt_nested(d):
+    if not isinstance(d, dict):
+        return fmt_val(d)
+    return ", ".join([f"S{sk}:{fmt_val(sv)}" for sk, sv in d.items()])
+
+
+# ─── App Setup ────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
-st.title("BareBump Cash‑Flow Simulator & Financials")
+st.title("BareBump Cash-Flow Simulator & Financials")
 
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
@@ -38,20 +62,20 @@ churn         = st.sidebar.number_input("Churn Rate", 0.0, 1.0, 0.05, format="%.
 lead_time     = st.sidebar.number_input("Lead Time (months)", 0, 12, 1)
 safety        = st.sidebar.number_input("Safety Factor", 1.0, 3.0, 1.2, format="%.2f")
 rqty          = st.sidebar.number_input("Reorder Quantity (#)", 0, 25000, 833)
-rcost1        = st.sidebar.number_input("Reorder Cost Stage 1 ($)", 0, 1000000, 32750)
-rcost2        = st.sidebar.number_input("Reorder Cost Stage 2 ($)", 0, 1000000, 32750)
-rcost3        = st.sidebar.number_input("Reorder Cost Stage 3 ($)", 0, 1000000, 32750)
+rcost1        = st.sidebar.number_input("Reorder Cost Stage 1 ($)", 0, 1000000, 32750)
+rcost2        = st.sidebar.number_input("Reorder Cost Stage 2 ($)", 0, 1000000, 32750)
+rcost3        = st.sidebar.number_input("Reorder Cost Stage 3 ($)", 0, 1000000, 32750)
 ship_cost_pkg = st.sidebar.number_input("Shipping Cost per Pack ($)", 0.0, 50.0, 5.0, format="%.2f")
-inv1          = st.sidebar.number_input("Initial Inv Stage 1 (#)", 0, 25000, 833)
-inv2          = st.sidebar.number_input("Initial Inv Stage 2 (#)", 0, 25000, 833)
-inv3          = st.sidebar.number_input("Initial Inv Stage 3 (#)", 0, 25000, 833)
+inv1          = st.sidebar.number_input("Initial Inv Stage 1 (#)", 0, 25000, 833)
+inv2          = st.sidebar.number_input("Initial Inv Stage 2 (#)", 0, 25000, 833)
+inv3          = st.sidebar.number_input("Initial Inv Stage 3 (#)", 0, 25000, 833)
 inv_cost      = st.sidebar.number_input("Initial Inventory Cost ($)", 0, 500000, 98250)
-st1           = st.sidebar.number_input("Start Stage 1 %", 0.0, 1.0, 0.60, format="%.2f")
-st2           = st.sidebar.number_input("Start Stage 2 %", 0.0, 1.0, 0.30, format="%.2f")
-st3           = st.sidebar.number_input("Start Stage 3 %", 0.0, 1.0, 0.10, format="%.2f")
-ship1_1       = st.sidebar.number_input("Pct Ship Stage 1 Initial", 0.0, 1.0, 0.80, format="%.2f")
-ship1_2       = st.sidebar.number_input("Pct Ship Stage 2 Initial", 0.0, 1.0, 0.15, format="%.2f")
-ship1_3       = st.sidebar.number_input("Pct Ship Stage 3 Initial", 0.0, 1.0, 0.05, format="%.2f")
+st1           = st.sidebar.number_input("Start Stage 1 %", 0.0, 1.0, 0.60, format="%.2f")
+st2           = st.sidebar.number_input("Start Stage 2 %", 0.0, 1.0, 0.30, format="%.2f")
+st3           = st.sidebar.number_input("Start Stage 3 %", 0.0, 1.0, 0.10, format="%.2f")
+ship1_1       = st.sidebar.number_input("Pct Ship Stage 1 Initial", 0.0, 1.0, 0.80, format="%.2f")
+ship1_2       = st.sidebar.number_input("Pct Ship Stage 2 Initial", 0.0, 1.0, 0.15, format="%.2f")
+ship1_3       = st.sidebar.number_input("Pct Ship Stage 3 Initial", 0.0, 1.0, 0.05, format="%.2f")
 months        = st.sidebar.number_input("Simulation Months", 1, 36, 12)
 tax_rate      = st.sidebar.slider("Income Tax Rate", 0.0, 1.0, 0.21, step=0.01, format="%.2f")
 
@@ -77,7 +101,7 @@ params = {
     "simulation_months":      months
 }
 
-
+# ─── Core Simulation ─────────────────────────────────────────────────────────
 def run_simulation(p):
     total_pkgs = sum(p["initial_inventory"].values())
     if total_pkgs == 0:
@@ -88,7 +112,6 @@ def run_simulation(p):
     monthly_amt  = p["monthly_price"] * (1 - p["prepaid_discount_rate"])
     cash         = p["initial_inventory_cost"]  # financing inflow
     cash        -= p["initial_inventory_cost"]  # initial inventory purchase
-    cum_net_cash = 0
     prev_def_bal = 0
     pending      = []
     monthly_cohorts = []
@@ -242,9 +265,9 @@ def run_simulation(p):
             "Month":                  m,
             "New Monthly Subs":       new_mon,
             "New Prepaid Subs":       new_pre,
-            "Stage 1 Shipped":        ship_mon[1] + ship_pre[1],
-            "Stage 2 Shipped":        ship_mon[2] + ship_pre[2],
-            "Stage 3 Shipped":        ship_mon[3] + ship_pre[3],
+            "Stage 1 Shipped":        ship_mon[1] + ship_pre[1],
+            "Stage 2 Shipped":        ship_mon[2] + ship_pre[2],
+            "Stage 3 Shipped":        ship_mon[3] + ship_pre[3],
             "Inv S1":                 inventory[1],
             "Inv S2":                 inventory[2],
             "Inv S3":                 inventory[3],
@@ -288,10 +311,11 @@ def build_financials(df, p):
     bs["Unearned Revenue"]     = df["Deferred Rev Balance"]
     bs["Total Current Assets"] = bs["Cash Balance"] + bs["Inventory Value"]
     bs["Total Liabilities"]    = bs["Unearned Revenue"]
-    bs["Paid‑in Capital"]      = p["initial_inventory_cost"]
+    bs["Paid-in Capital"]      = p["initial_inventory_cost"]
     bs["Retained Earnings"]    = df["Net Income"].cumsum()
-    bs["Total Equity"]         = bs["Paid‑in Capital"] + bs["Retained Earnings"]
+    bs["Total Equity"]         = bs["Paid-in Capital"] + bs["Retained Earnings"]
     bs["Total L&E"]            = bs["Total Liabilities"] + bs["Total Equity"]
+    bs["Δ (Assets − L&E)"]     = (bs["Total Current Assets"] - bs["Total L&E"]).round(2)
 
     # Income Statement Year 1
     is_df = pd.DataFrame({
@@ -304,7 +328,7 @@ def build_financials(df, p):
         "Net Income":   df["Net Income"],
     })
     annual_is = is_df.head(12).sum().to_frame().T
-    annual_is.index = ["Year 1"]
+    annual_is.index = ["Year 1"]
 
     # Cash Flow Statement
     cf = pd.DataFrame({
@@ -320,6 +344,8 @@ def build_financials(df, p):
 # ─── Run & Display Reports ───────────────────────────────────────────────────
 sim_df = run_simulation(params)
 bs_df, annual_is_df, cf_df = build_financials(sim_df, params)
+
+# Annual tax disclosure
 annual_is_df = annual_is_df.copy()
 annual_is_df["Income Tax"] = annual_is_df["Net Income"] * tax_rate
 annual_is_df["Income After Tax"] = annual_is_df["Net Income"] - annual_is_df["Income Tax"]
@@ -328,30 +354,26 @@ fmt_int = "{:,}"
 fmt_flt = "{:,.2f}"
 
 # ─── Prepare & Reorder Monthly Table ─────────────────────────────────────────
-# 1) drop Transit Value
 display_df = sim_df.drop(columns=["Transit Value"])
-
-# 2) specify the exact column order you want
 display_cols = [
     "New Monthly Subs", "New Prepaid Subs",
-    "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
+    "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
     "Total Shipments", "Total Subscribers", "Total Prepaid Subs",
     "Inv S1", "Inv S2", "Inv S3",
-    "Inventory Value",     # on‑hand inventory
-    "Reorder Stages",      # keep stages with reorders
+    "Inventory Value",
+    "Reorder Stages",
     "Monthly Revenue", "Prepaid Rev Recognized", "Total Revenue",
     "Total COGS", "Gross Profit",
-    "CAC",                 # between Gross Profit & Operating Income
+    "CAC",
     "Operating Income",
     "Shipping Exp",
-    "Net Income",          # before Reorder Cost
-    "Reorder Cost",        # moved to right after Net Income
+    "Net Income",
+    "Reorder Cost",
     "Net Cash Flow",
     "Cash Balance", "Deferred Rev Balance"
 ]
 display_df = display_df[display_cols]
 
-# 3) render
 st.subheader("Monthly Simulation Details")
 st.dataframe(
     display_df.style
@@ -359,17 +381,17 @@ st.dataframe(
         .format(fmt_flt, subset=display_df.select_dtypes("float").columns)
 )
 
-# ─── 3‑Month Balance Sheet View ──────────────────────────────────────────────
+# ─── 3-Month Balance Sheet View ──────────────────────────────────────────────
 start_month = st.sidebar.number_input(
-    "Start Month for 3‑Month View", 1, params["simulation_months"]-2, 1
+    "Start Month for 3-Month View", 1, params["simulation_months"]-2, 1
 )
 slice_df = bs_df.loc[start_month:start_month+2]
 fmt3 = slice_df.T.copy()
 fmt3.index = [
     "Cash","Inventory","Unearned Revenue",
     "Total Current Assets","Total Liabilities",
-    "Paid‑in Capital","Retained Earnings",
-    "Total Equity","Total L&E"
+    "Paid-in Capital","Retained Earnings",
+    "Total Equity","Total L&E","Δ (Assets − L&E)"
 ]
 
 rows = []
@@ -387,36 +409,38 @@ for lbl in ["Unearned Revenue","Total Liabilities"]:
 rows.append(("", ["", "", ""]))
 # Equity
 rows.append(("Shareholders' Equity:", ["", "", ""]))
-for lbl in ["Paid‑in Capital","Retained Earnings","Total Equity"]:
+for lbl in ["Paid-in Capital","Retained Earnings","Total Equity"]:
     ind = "  " if lbl != "Total Equity" else ""
     rows.append((f"{ind}{lbl}", [f"{v:,.2f}" for v in fmt3.loc[lbl]]))
 rows.append(("", ["", "", ""]))
 # Total L&E
 rows.append(("Total L&E", [f"{v:,.2f}" for v in fmt3.loc["Total L&E"]]))
+# Check row
+rows.append(("Assets − L&E", [f"{v:,.2f}" for v in (fmt3.loc["Total Current Assets"] - fmt3.loc["Total L&E"])]))
 
-cols = [f"Month {m}" for m in slice_df.index]
+cols = [f"Month {m}" for m in slice_df.index]
 df3 = pd.DataFrame([vals for _, vals in rows], columns=cols)
 df3.insert(0, "", [lbl for lbl,_ in rows])
 
-st.subheader("Balance Sheet (3‑Month View) Change Starting Month from Sidebar")
-height_px = (len(df3) + 1) * 35  # adjust multiplier as needed
+st.subheader("Balance Sheet (3-Month View) — Change Starting Month in Sidebar")
+height_px = (len(df3) + 1) * 35
 st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 
 st.subheader("Annual Income Statement")
 st.dataframe(annual_is_df.style.format(fmt_flt))
 
 with st.expander("📊 Balance Sheet (Months 1-12)"):
-    # --- reorder columns so Unearned Revenue sits between Assets and Liabilities ---
     bs_order = [
         "Cash Balance",
         "Inventory Value",
         "Total Current Assets",
         "Unearned Revenue",
         "Total Liabilities",
-        "Paid‑in Capital",
+        "Paid-in Capital",
         "Retained Earnings",
         "Total Equity",
-        "Total L&E"
+        "Total L&E",
+        "Δ (Assets − L&E)"
     ]
     st.dataframe(
         bs_df[bs_order]
@@ -429,8 +453,7 @@ with st.expander("📈 Monthly Cash Flow Statement"):
         cf_df.style
              .format(fmt_flt)
     )
-    
-# Insert this at the bottom of your Streamlit script, after your last st.dataframe() call
+
 with st.expander("📋 All Calculation Methods"):
     st.markdown(r"""
     ### Subscriber Growth and Shipments
@@ -444,7 +467,7 @@ with st.expander("📋 All Calculation Methods"):
       - Stage 3 shipment count
 
     ### Inventory Management
-    - **End‑of‑Month Inventory for Each Stage** = Previous Month Inventory + New Arrivals − Total Shipments for the Stage
+    - **End-of-Month Inventory for Each Stage** = Previous Month Inventory + New Arrivals − Total Shipments for the Stage
     - **Safety Stock Threshold** = Ceiling of [(Current Month Shipments + (Current Month Shipments × Lead Time in Months)) × Safety Factor]
     - **Reorder Trigger**: when inventory for a stage ≤ Safety Stock Threshold, an order of the Reorder Quantity is placed at the fixed stage reorder cost, arriving after the lead time.
 
@@ -478,26 +501,15 @@ with st.expander("📋 All Calculation Methods"):
 
     ### Balance Sheet Overview
     - **Cash Balance**: Cumulative cash available at period end
-    - **Inventory Value**: Sum of on‑hand pack value and inventory in transit
+    - **Inventory Value**: Sum of on-hand pack value and inventory in transit
     - **Unearned Revenue**: Deferred Revenue Balance under liabilities
-    - **Paid‑in Capital**: Initial inventory financing amount
+    - **Paid-in Capital**: Initial inventory financing amount
     - **Retained Earnings**: Cumulative sum of Net Income over time
-    - **Total Equity**: Paid‑in Capital + Retained Earnings
+    - **Total Equity**: Paid-in Capital + Retained Earnings
     - **Total Liabilities and Equity**: Unearned Revenue + Total Equity (matches Total Assets)
-    """ )
-# --- Quick Print Button (place near the bottom, after tables are built) ---
-import streamlit.components.v1 as components
-from datetime import datetime
-import html
+    """)
 
-def dict_to_html_table(d: dict, title_map: dict = None) -> str:
-    """Render a simple 2-col HTML table from a dict."""
-    rows = []
-    for k, v in d.items():
-        label = title_map.get(k, k) if title_map else k
-        rows.append(f"<tr><th>{html.escape(str(label))}</th><td>{html.escape(str(v))}</td></tr>")
-    return "<table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
-
+# ─── Quick Print & Download ──────────────────────────────────────────────────
 # Collect the settings you want printed (from sidebar/params)
 settings_map = {
     "monthly_price":          "Sale Price ($)",
@@ -520,22 +532,13 @@ settings_map = {
     "ship1_dist":             "Pct Ship Stage 1 Initial",
     "simulation_months":      "Simulation Months",
 }
-# Build a shallow copy so we can pretty-print a few dict fields
 _settings = {k: params.get(k) for k in settings_map.keys()}
-# Pretty-print nested dicts
-def fmt_nested(d):
-    if not isinstance(d, dict): 
-        return d
-    return ", ".join([f"S{sk}:{sv}" for sk, sv in d.items()])
-
 for k in ("initial_inventory", "reorder_cost", "start_stage_dist", "ship1_dist"):
     _settings[k] = fmt_nested(_settings[k])
 
-# Add tax rate (not in params) and the 3-month view starting month if you want it
 _settings["tax_rate"] = f"{tax_rate:.2%}"
 _settings["start_month_3mo_view"] = start_month
 
-# Convert settings to HTML
 settings_html = dict_to_html_table(_settings, settings_map | {
     "tax_rate": "Income Tax Rate",
     "start_month_3mo_view": "Start Month (3-Month BS View)"
@@ -544,6 +547,7 @@ settings_html = dict_to_html_table(_settings, settings_map | {
 # Convert dataframes to simple HTML (no Streamlit styling, but printable)
 monthly_html = display_df.to_html(index=True, border=0)
 annual_is_html = annual_is_df.to_html(index=True, border=0)
+bs3_html = df3.to_html(index=False, border=0)
 
 # Build a lightweight printable HTML document
 generated_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -557,9 +561,10 @@ print_doc = f"""<!doctype html>
     body {{ font-family: Arial, sans-serif; padding: 24px; color: #111; }}
     h1, h2 {{ margin: 0 0 8px; }}
     .meta {{ margin-bottom: 16px; color: #666; }}
-    table {{ border-collapse: collapse; width: 100%; margin: 8px 0 24px; }}
-    th, td {{ border: 1px solid #ddd; padding: 8px; font-size: 12px; text-align: left; }}
+    table {{ border-collapse: collapse; width: 100%; margin: 8px 0 24px; table-layout: auto; }}
+    th, td {{ border: 1px solid #ddd; padding: 8px; font-size: 12px; text-align: left; vertical-align: top; }}
     th {{ background: #f6f6f6; }}
+    tr {{ page-break-inside: avoid; }}
     .pagebreak {{ page-break-before: always; }}
     @media print {{
       .noprint {{ display: none !important; }}
@@ -583,6 +588,10 @@ print_doc = f"""<!doctype html>
   {monthly_html}
 
   <div class="pagebreak"></div>
+  <h2>Balance Sheet (3-Month View)</h2>
+  {bs3_html}
+
+  <div class="pagebreak"></div>
   <h2>Annual Income Statement</h2>
   {annual_is_html}
 
@@ -593,7 +602,7 @@ print_doc = f"""<!doctype html>
 </html>"""
 
 # Button that opens a new tab with the printable document and triggers print()
-if st.button("🖨️ Quick Print (Settings + Monthly + Annual IS)"):
+if st.button("🖨️ Quick Print (Settings + Monthly + 3-Mo BS + Annual IS)"):
     components.html(
         f"""
         <script>
@@ -608,11 +617,10 @@ if st.button("🖨️ Quick Print (Settings + Monthly + Annual IS)"):
         height=0, width=0
     )
 
-# (Optional) also provide a downloadable HTML file for record-keeping
+# Optional: downloadable HTML file for records
 st.download_button(
     "⬇️ Download Quick Report (HTML)",
     data=print_doc.encode("utf-8"),
     file_name="BareBump_Quick_Report.html",
     mime="text/html"
 )
-
