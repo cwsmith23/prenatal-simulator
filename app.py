@@ -47,7 +47,7 @@ def q2(x: float) -> float:
 
 # ─── App Setup ────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
-st.title("BareBump Cash-Flow Simulator & Financials (GAAP-aligned + cent-exact)")
+st.title("BareBump Cash-Flow Simulator & Financials (GAAP-aligned)")
 
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
@@ -108,8 +108,7 @@ init_unit_cost = (params["initial_inventory_cost"] / total_init_units) if total_
 reorder_unit_costs = {s: (params["reorder_cost"][s] / params["reorder_qty"] if params["reorder_qty"] else 0)
                       for s in (1,2,3)}
 st.caption(
-    f"🧮 Unit cost — Initial: ${init_unit_cost:,.2f}/pack | "
-    f"Reorder S1: ${reorder_unit_costs[1]:,.2f}, S2: ${reorder_unit_costs[2]:,.2f}, S3: ${reorder_unit_costs[3]:,.2f}"
+    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack | "
 )
 
 # ─── Core Simulation ─────────────────────────────────────────────────────────
