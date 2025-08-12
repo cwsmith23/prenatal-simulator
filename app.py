@@ -138,7 +138,7 @@ months        = st.sidebar.number_input("Simulation Months", 1, 36, 12)
 tax_rate      = st.sidebar.slider("Income Tax Rate (entity-level)", 0.0, 1.0, 0.21, step=0.01, format="%.2f")
 entity_pays_state_tax = st.sidebar.checkbox("Entity pays state income tax (PTE/C-corp)?", value=False)
 effective_tax_rate = tax_rate if entity_pays_state_tax else 0.0
-pay_taxes_now = st.sidebar.checkbox("Pay Income Taxes Monthly (else accrue)", value=False)
+pay_taxes_now = st.sidebar.checkbox("Pay Income Taxes Monthly (else accrue)", value=True)
 
 # Sales tax & distributions
 collect_sales_tax = st.sidebar.checkbox("Collect sales tax nationwide (simulated)", True)
@@ -210,9 +210,7 @@ init_unit_cost = (params["initial_inventory_cost"] / total_init_units) if total_
 reorder_unit_costs = {s: (params["reorder_cost"][s] / params["reorder_qty"] if params["reorder_qty"] else 0)
                       for s in (1,2,3)}
 st.caption(
-    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack — "
-    f"Reorder unit costs: S1 ${reorder_unit_costs[1]:,.2f}, "
-    f"S2 ${reorder_unit_costs[2]:,.2f}, S3 ${reorder_unit_costs[3]:,.2f}"
+    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack  "
 )
 
 # ─── Core Simulation ─────────────────────────────────────────────────────────
@@ -655,13 +653,6 @@ else:
     col1.metric("Total Owner Distributions", f"${total_dist:,.2f}")
     col2.metric("Total Take Home", f"${total_take:,.2f}")
 
-# ─── Monthly Cash Flow Statement (expandable, BEFORE 12-month BS) ────────────
-with st.expander("📈 Monthly Cash Flow Statement"):
-    st.dataframe(
-        cf_df.style
-             .format(fmt_flt)
-    )
-
 # ─── 12-month Balance Sheet (after owner distributions & CF) ─────────────────
 with st.expander("📊 Balance Sheet (Months 1-12)"):
     bs_order = [
@@ -684,7 +675,14 @@ with st.expander("📊 Balance Sheet (Months 1-12)"):
             .style
             .format(fmt_flt)
     )
-
+    
+# ─── Monthly Cash Flow Statement (expandable, BEFORE 12-month BS) ────────────
+with st.expander("📈 Monthly Cash Flow Statement"):
+    st.dataframe(
+        cf_df.style
+             .format(fmt_flt)
+    )
+    
 # All calculation methods
 with st.expander("📋 All Calculation Methods"):
     st.markdown(r"""
