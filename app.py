@@ -47,7 +47,7 @@ def q2(x: float) -> float:
 
 # ─── App Setup ────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
-st.title("BareBump Cash-Flow Simulator & Financials (GAAP-aligned)")
+st.title("BareBump Cash-Flow Simulator & Financials (GAAP)")
 
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
