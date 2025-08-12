@@ -530,7 +530,7 @@ with st.expander("📋 All Calculation Methods"):
     - **Equity** = Paid-in Capital + Retained Earnings.
     - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
-# ─── Quick Print & Download (Annual IS first, then 12-month BS; taller rows + small print margins) ───
+# ─── Quick Print & Download (Annual IS first, then 12-month BS; taller rows + 1/8" print margins) ───
 settings_map = {
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
@@ -578,11 +578,12 @@ def _fmt_flt(x):
     except Exception:
         return x
 
-# Monthly Simulation Details
+# Monthly Simulation Details (wrap so we can scale for print only)
 _int_cols  = display_df.select_dtypes(include=["int", "int64"]).columns
 _flt_cols  = display_df.select_dtypes(include=["float", "float64"]).columns
 _monthly_formatters = {**{c: _fmt_int for c in _int_cols}, **{c: _fmt_flt for c in _flt_cols}}
-monthly_html = display_df.to_html(index=True, border=0, formatters=_monthly_formatters)
+monthly_html_core = display_df.to_html(index=True, border=0, formatters=_monthly_formatters)
+monthly_html = f'<div class="monthly-wrap">{monthly_html_core}</div>'
 
 # Annual Income Statement
 _annual_formatters = {c: _fmt_flt for c in annual_is_df.columns}
@@ -606,9 +607,9 @@ _bs12 = bs_df[bs12_order]
 _bs12_formatters = {c: _fmt_flt for c in _bs12.columns}
 bs12_html = _bs12.to_html(index=True, border=0, formatters=_bs12_formatters)
 
-# Small print margins (¼ inch) + landscape for width
+# 1/8" print margins + landscape for width; ensure monthly table fits fully
 force_landscape = True
-page_size_css = "@page { size: Letter landscape; margin: 0.25in; }" if force_landscape else "@page { margin: 0.25in; }"
+page_size_css = "@page { size: Letter landscape; margin: 0.125in; }" if force_landscape else "@page { margin: 0.125in; }"
 
 generated_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
 print_doc = f"""<!doctype html>
@@ -648,14 +649,23 @@ print_doc = f"""<!doctype html>
     }}
     th {{ background: #f6f6f6; font-weight: bold; white-space: normal; }}
 
-    tr {{ page-break-inside: avoid; }}
-    .pagebreak {{ page-break-before: always; }}
-
+    /* Make sure the Monthly table always fits on page width when printing */
+    .monthly-wrap table {{ font-size: 12.25px; }}
     @media print {{
       body {{ padding: 0; }}      /* rely on @page margins when printing */
-      table {{ font-size: 12.5px; }}
-      th, td {{ padding: 12px 10px; line-height: 1.5; }}
+      table {{ font-size: 12.25px; }}
+      th, td {{ padding: 10px 8px; line-height: 1.45; }}
+      .monthly-wrap {{
+        /* Slight downscale just for the Monthly table to guarantee full width */
+        transform: scale(0.96);
+        transform-origin: top left;
+        width: 104%; /* counteract scale so table remains crisp and centered */
+      }}
+      .monthly-wrap table {{ font-size: 11.25px; }}
     }}
+
+    tr {{ page-break-inside: avoid; }}
+    .pagebreak {{ page-break-before: always; }}
 
     .header {{
       display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px;
