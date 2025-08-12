@@ -567,9 +567,30 @@ settings_html = dict_to_html_table(_settings, settings_map | {
 })
 
 # --- Build HTML sections for printing (12-month BS; Annual IS comes first) ---
-monthly_html   = display_df.to_html(index=True, border=0)
-annual_is_html = annual_is_df.to_html(index=True, border=0)
+# Helpers to format numbers with commas for HTML tables
+def _fmt_int(x):
+    try:
+        return "" if pd.isna(x) else f"{int(x):,}"
+    except Exception:
+        return x
 
+def _fmt_flt(x):
+    try:
+        return "" if pd.isna(x) else f"{x:,.2f}"
+    except Exception:
+        return x
+
+# Monthly Simulation Details (detect ints/floats automatically)
+_int_cols  = display_df.select_dtypes(include=["int", "int64"]).columns
+_flt_cols  = display_df.select_dtypes(include=["float", "float64"]).columns
+_monthly_formatters = {**{c: _fmt_int for c in _int_cols}, **{c: _fmt_flt for c in _flt_cols}}
+monthly_html = display_df.to_html(index=True, border=0, formatters=_monthly_formatters)
+
+# Annual Income Statement (all numeric → 2-decimals with commas)
+_annual_formatters = {c: _fmt_flt for c in annual_is_df.columns}
+annual_is_html = annual_is_df.to_html(index=True, border=0, formatters=_annual_formatters)
+
+# 12-month Balance Sheet (ordered columns)
 bs12_order = [
     "Cash Balance",
     "Inventory Value",
@@ -583,7 +604,10 @@ bs12_order = [
     "Total L&E",
     "Δ (Assets − L&E)"
 ]
-bs12_html = bs_df[bs12_order].to_html(index=True, border=0)
+_bs12 = bs_df[bs12_order]
+_bs12_formatters = {c: _fmt_flt for c in _bs12.columns}
+bs12_html = _bs12.to_html(index=True, border=0, formatters=_bs12_formatters)
+
 
 generated_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
 print_doc = f"""<!doctype html>
