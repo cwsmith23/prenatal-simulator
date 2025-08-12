@@ -84,12 +84,34 @@ def forecast_reorder_buffer(inventory_now, pending_abs, current_month, exp_deman
                     pipe.append([arrive_t, s, rqty, float(rcost[s])])
     return q2(total_cost_to_place)
 
+# NEW: growth model helper
+def compute_new_signups(p: dict, alive: int) -> tuple[int, int]:
+    """
+    Returns (new_monthly, new_prepaid) for this month based on the chosen model.
+    - Constant %: uses subscriber_growth_rate.
+    - Logistic: dN = r * N * (1 - N/K) + organic_floor
+    """
+    if p["growth_model"] == "Constant %":
+        total_new = int(round(alive * p["subscriber_growth_rate"]))
+    else:
+        K = max(p["tam"], 1)
+        r = max(p["adoption_speed"], 0.0)
+        base_new = r * alive * max(0.0, 1.0 - (alive / K))
+        total_new = max(0, int(round(base_new + p["organic_floor"])))
+
+    alloc = allocate_with_remainder(
+        total_new,
+        {"pre": p["percent_prepaid"], "mon": 1 - p["percent_prepaid"]}
+    )
+    return alloc["mon"], alloc["pre"]
+
 # ─── App Setup ────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide")
 st.title("BareBump Cash-Flow Simulator & Financials (GAAP)")
 
 # ─── Sidebar: Preset Toggle ──────────────────────────────────────────────────
 preset = st.sidebar.radio("Supplier Preset", ["NutraCap", "Pure Private Label"], index=0)
+st.caption(f"Supplier preset: **{preset}**")
 
 if preset == "NutraCap":
     DEF = dict(
@@ -105,14 +127,22 @@ else:
         min_cash_reserve=32750
     )
 
-# Show selected preset under the main title
-st.caption(f"Preset: {preset}")
-
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 100000, 250)
 init_pre      = st.sidebar.number_input("Initial Prepaid Subs", 0, 100000, 20)
-growth        = st.sidebar.number_input("Growth Rate", 0.0, 1.0, 0.10, format="%.2f")
+
+# Growth model controls (non-seasonal)
+growth_model = st.sidebar.selectbox(
+    "Growth Model",
+    ["Constant %", "Logistic (non-seasonal)"],
+    index=1
+)
+growth        = st.sidebar.number_input("Constant % Growth Rate (if used)", 0.0, 1.0, 0.10, format="%.2f")
+tam           = st.sidebar.number_input("TAM (addressable subs)", 1_000, 10_000_000, 50_000, step=1_000)
+adoption_speed= st.sidebar.slider("Adoption speed r (per month)", 0.00, 1.00, 0.12, step=0.01)
+organic_floor = st.sidebar.number_input("Organic floor signups / month", 0, 100_000, 10)
+
 pct_pre       = st.sidebar.number_input("% Prepaid", 0.0, 1.0, 0.20, format="%.2f")
 disc_pre      = st.sidebar.number_input("Prepaid Discount", 0.0, 1.0, 0.10, format="%.2f")
 cac_mon       = st.sidebar.number_input("Monthly CAC ($)", 0, 500, 20)
@@ -169,7 +199,14 @@ params = {
     "monthly_price":          monthly_price,
     "initial_subscribers":    init_subs,
     "initial_prepaid":        init_pre,
-    "subscriber_growth_rate": growth,
+
+    # Growth model params
+    "growth_model":           growth_model,
+    "subscriber_growth_rate": growth,         # used if "Constant %"
+    "tam":                    int(tam),
+    "adoption_speed":         float(adoption_speed),
+    "organic_floor":          int(organic_floor),
+
     "percent_prepaid":        pct_pre,
     "prepaid_discount_rate":  disc_pre,
     "cac_new_monthly":        cac_mon,
@@ -213,7 +250,7 @@ init_unit_cost = (params["initial_inventory_cost"] / total_init_units) if total_
 reorder_unit_costs = {s: (params["reorder_cost"][s] / params["reorder_qty"] if params["reorder_qty"] else 0)
                       for s in (1,2,3)}
 st.caption(
-    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack"
+    f"🧮 Unit cost: ${init_unit_cost:,.2f}/pack  "
 )
 
 # ─── Core Simulation ─────────────────────────────────────────────────────────
@@ -274,19 +311,14 @@ def run_simulation(p):
 
     records = []
     for m in range(1, p["simulation_months"] + 1):
-        # Generate new cohorts after month 1
+        # Generate new cohorts (month 1 uses initial seeds; after that use selected growth model)
         if m == 1:
             new_pre = p["initial_prepaid"]
             new_mon = sum(c["count"] for c in monthly_cohorts)
         else:
-            alive   = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
-            tot     = alive * p["subscriber_growth_rate"]
-            alloc   = allocate_with_remainder(
-                int(round(tot)),
-                {"pre": p["percent_prepaid"], "mon": 1 - p["percent_prepaid"]}
-            )
-            new_pre = alloc["pre"]
-            new_mon = alloc["mon"]
+            alive = sum(c["count"] for c in monthly_cohorts + prepaid_cohorts)
+            new_mon, new_pre = compute_new_signups(p, alive)
+
             # seed new monthly cohorts
             stage_alloc = allocate_with_remainder(new_mon, p["start_stage_dist"])
             for stg, base_cnt in stage_alloc.items():
@@ -300,10 +332,7 @@ def run_simulation(p):
                         })
             # seed new prepaid cohort & increase deferred
             if new_pre > 0:
-                prepaid_cohorts.append({
-                    "start":    m,
-                    "count":    new_pre,
-                })
+                prepaid_cohorts.append({"start": m, "count": new_pre})
                 deferred_bal = q2(deferred_bal + q2(new_pre * monthly_amt * 9))
 
         # Initialize monthly counters
@@ -556,7 +585,7 @@ display_df = sim_df.drop(columns=["Transit Value"])
 display_cols = [
     "New Monthly Subs", "New Prepaid Subs",
     "Stage 1 Shipped", "Stage 2 Shipped", "Stage 3 Shipped",
-    # Backorder columns removed
+    # Backorder columns removed per request
     "Total Shipments", "Total Subscribers", "Total Prepaid Subs",
     "Inv S1", "Inv S2", "Inv S3",
     "Inventory Value",
@@ -633,6 +662,8 @@ st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 
 # ─── Owner Distributions (above 12-month BS) ─────────────────────────────────
 st.subheader("Owner Distributions")
+
+# Build view limited to months with a distribution
 dist_cols = ["Distribution"]
 dist_df = sim_df.loc[sim_df["Distribution"] > 0, dist_cols].copy()
 
@@ -648,17 +679,15 @@ else:
     pretty_cols = ["Distribution", "Est Personal Tax", "Take Home", "Cumulative Distribution", "Cumulative Take Home"]
     st.dataframe(dist_df[pretty_cols].style.format("{:,.2f}"))
 
-    # Totals under the table (includes Total Personal Taxes)
     total_dist = float(dist_df["Distribution"].sum())
-    total_owner_tax = float(dist_df["Est Personal Tax"].sum())
     total_take = float(dist_df["Take Home"].sum())
+    total_pers_tax = float(dist_df["Est Personal Tax"].sum())
+    col1, col2 = st.columns(2)
+    col1.metric("Total Owner Distributions", f"${total_dist:,.2f}")
+    col2.metric("Total Take Home", f"${total_take:,.2f}")
+    st.caption(f"Total estimated personal taxes on distributions: **${total_pers_tax:,.2f}**")
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Owner Distributions", f"${total_dist:,.2f}")
-    c2.metric("Total Personal Taxes (est.)", f"${total_owner_tax:,.2f}")
-    c3.metric("Total Take Home", f"${total_take:,.2f}")
-
-# ─── Monthly Cash Flow Statement (BEFORE 12-month BS) ────────────────────────
+# ─── Monthly Cash Flow Statement (expandable, BEFORE 12-month BS) ────────────
 with st.expander("📈 Monthly Cash Flow Statement"):
     st.dataframe(
         cf_df.style
@@ -704,34 +733,35 @@ with st.expander("📋 All Calculation Methods"):
     - **Outbound Shipping** included in Operating Expenses (not COGS).
 
     ### Income Taxes (Entity Level)
-    - Default for a GA **LLC (pass-through)** is **no entity-level income tax**. Toggle **“Entity pays state income tax”** only if you elect a PTE/C-corp treatment or similar.
-    - **Tax Expense** (entity) = max(Operating Income, 0) × effective tax rate; accrued monthly; optionally paid monthly.
+    - **Tax Expense** = max(Operating Income, 0) × effective tax rate; accrued monthly (optional cash payment).
 
     ### Sales Tax (Pass-through)
     - Collected from customers (if taxable), recorded as **Sales Tax Payable**, not revenue; remitted per schedule.
 
     ### Cash Flow (Operating)
-    - **Operating Cash Flow** = Monthly revenue cash − CAC − Shipping − Income Taxes Paid
-      + **ΔDeferred Revenue** + **Sales Tax Collected − Sales Tax Remitted**
-      − **Reorder cash outflows** when POs are placed.
+    - **Operating Cash Flow** = Monthly revenue cash − CAC − Shipping − Inventory purchases − Income Taxes Paid
+      + **ΔDeferred Revenue** + **Sales Tax Collected − Sales Tax Remitted**.
+    - Reorders reduce cash when ordered; inventory value increases when arriving (in-transit → on-hand).
 
-    ### Equity & Distributions (Sweeps)
+    ### Growth Models
+    - **Constant %**: New signups = Current active × constant monthly growth rate.
+    - **Logistic (non-seasonal)**: New signups = `r × N × (1 − N/K) + organic_floor`, where:
+        - `N` = current active subscribers,
+        - `K` = TAM (addressable subscribers),
+        - `r` = adoption speed per month,
+        - `organic_floor` = baseline signups (word-of-mouth).
+
+    ### Equity & Distributions
     - **Paid-in Capital**: initial financing.
     - **Retained Earnings**: cumulative **after-tax** income.
-    - **Owner Distributions (sweeps)**: only from **excess cash** after buffers:
-        1) POs already in pipeline,
-        2) Projected reorders over the chosen horizon,
-        3) Next sales-tax remittance (if not monthly),
-        4) Minimum cash reserve,
-        5) **Prepaid holdback** = Deferred Revenue × (1 − Max % of deferred usable).
-      The available excess is then multiplied by **Distribute % of excess cash**.
+    - **Member Distributions (Sweeps)**: paid from **excess cash** after buffers:
+        - pending POs in pipeline,
+        - projected reorders within the horizon,
+        - next sales-tax remittance if not monthly,
+        - minimum cash reserve,
+        - plus a **prepaid cash holdback** = Deferred Revenue × (1 − Max % of deferred usable).
+      Amount swept may be further scaled by **Distribute % of excess cash**.
 
-    ### Owner Personal Taxes (Fed + GA + Self-Employment; simplified)
-    - We estimate **personal taxes** on distributions using your slider **Owner effective personal tax rate**.
-    - **Est Personal Tax** = Distribution × Owner Personal Tax Rate.
-    - **Take Home** = Distribution − Est Personal Tax.
-    - This is an **estimate** for planning only; consult your CPA for filing specifics.
-    
     ### Balance Sheet Identity
     - **Assets** = Cash + Inventory (on-hand + in-transit).
     - **Liabilities** = Unearned Revenue + Income Taxes Payable + Sales Tax Payable.
@@ -739,13 +769,17 @@ with st.expander("📋 All Calculation Methods"):
     - Check column: **Δ(Assets − L&E)** should be 0.00.
     """)
 
-# ─── Quick Print & Download (incl. preset + Owner Distribution totals) ───────
+# ─── Quick Print & Download (incl. Owner Distribution totals) ────────────────
 settings_map = {
-    "supplier_preset":        "Supplier Preset",
+    "preset":                 "Supplier Preset",
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
     "initial_prepaid":        "Initial Prepaid Subs",
-    "subscriber_growth_rate": "Growth Rate",
+    "growth_model":           "Growth Model",
+    "subscriber_growth_rate": "Constant % Growth Rate",
+    "tam":                    "TAM (addressable subs)",
+    "adoption_speed":         "Adoption speed r",
+    "organic_floor":          "Organic floor signups / mo",
     "percent_prepaid":        "% Prepaid",
     "prepaid_discount_rate":  "Prepaid Discount",
     "cac_new_monthly":        "Monthly CAC ($)",
@@ -775,7 +809,8 @@ settings_map = {
     "max_prepaid_draw_pct":   "Max % Deferred usable",
     "owner_personal_tax_rate":"Owner Personal Tax Rate",
 }
-_settings = {k: (preset if k=="supplier_preset" else params.get(k)) for k in settings_map.keys()}
+print_params = {"preset": preset, **params}
+_settings = {k: print_params.get(k) for k in settings_map.keys()}
 for k in ("initial_inventory", "reorder_cost", "start_stage_dist", "ship1_dist"):
     _settings[k] = fmt_nested(_settings[k])
 _settings["effective_tax_rate"] = f"{params['effective_tax_rate']:.2%}"
@@ -844,17 +879,14 @@ if "Distribution" in sim_df.columns:
         dist_print["Cumulative Take Home"] = dist_print["Take Home"].cumsum().round(2)
         dist_print_html = dist_print.to_html(index=True, border=0, formatters={c:_fmt_flt for c in dist_print.columns})
         total_dist_print = float(dist_print["Distribution"].sum())
-        total_owner_tax_print = float(dist_print["Est Personal Tax"].sum())
         total_take_print = float(dist_print["Take Home"].sum())
     else:
         dist_print_html = "<p>No owner distributions occurred in the simulated period.</p>"
         total_dist_print = 0.0
-        total_owner_tax_print = 0.0
         total_take_print = 0.0
 else:
     dist_print_html = "<p>No owner distributions occurred in the simulated period.</p>"
     total_dist_print = 0.0
-    total_owner_tax_print = 0.0
     total_take_print = 0.0
 
 # 1/8" print margins + landscape for width
@@ -925,7 +957,7 @@ print_doc = f"""<!doctype html>
 
     .totals-row {{
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 16px;
       margin-top: 4px;
     }}
@@ -956,7 +988,6 @@ print_doc = f"""<!doctype html>
   {dist_print_html}
   <div class="totals-row">
     <div class="total-card"><strong>Total Owner Distributions:</strong> ${total_dist_print:,.2f}</div>
-    <div class="total-card"><strong>Total Personal Taxes (est.):</strong> ${total_owner_tax_print:,.2f}</div>
     <div class="total-card"><strong>Total Take Home:</strong> ${total_take_print:,.2f}</div>
   </div>
 
@@ -1008,13 +1039,13 @@ audit["Tax tie"]          = ((df["Operating Income"].clip(lower=0) * params["eff
 audit["Net Income tie"]   = (df["Operating Income"] - df["Tax Expense"] - df["Net Income"]).round(2)
 
 # 2) Deferred revenue rollforward:
-monthly_amt = params["monthly_price"] * (1 - params["prepaid_discount_rate"])
+monthly_amt_dbg = params["monthly_price"] * (1 - params["prepaid_discount_rate"])
 new_pre = df["New Prepaid Subs"].copy()
 if len(new_pre) > 0:
     new_pre.iloc[0] = 0  # initial deferred seeded at t=0
-expected_def_change = (new_pre * monthly_amt * 9 - df["Prepaid Rev Recognized"]).round(2)
+expected_def_change = (new_pre * monthly_amt_dbg * 9 - df["Prepaid Rev Recognized"]).round(2)
 actual_def_change = df["Deferred Rev Balance"].diff().fillna(
-    df["Deferred Rev Balance"].iloc[0] - (params["initial_prepaid"] * monthly_amt * 9)
+    df["Deferred Rev Balance"].iloc[0] - (params["initial_prepaid"] * monthly_amt_dbg * 9)
 ).round(2)
 audit["Deferred roll"] = (actual_def_change - expected_def_change).round(2)
 
