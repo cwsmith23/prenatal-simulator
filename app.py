@@ -88,6 +88,27 @@ def forecast_reorder_buffer(inventory_now, pending_abs, current_month, exp_deman
 st.set_page_config(layout="wide")
 st.title("BareBump Cash-Flow Simulator & Financials (GAAP)")
 
+# ─── Supplier Toggle (TOP OF SIDEBAR) ────────────────────────────────────────
+supplier_model = st.sidebar.radio(
+    "Fulfillment Model",
+    ("NutraCap", "Pure Private Label"),
+    index=0  # default to NutraCap per your request
+)
+
+# Default sets per supplier
+if supplier_model == "NutraCap":
+    DEF_RQTY = 500
+    DEF_INV1 = DEF_INV2 = DEF_INV3 = 500
+    DEF_INV_COST = 32100
+    DEF_RCOST1, DEF_RCOST2, DEF_RCOST3 = 9750, 12000, 10350
+    DEF_MIN_RESERVE = 12000
+else:  # Pure Private Label (your prior defaults)
+    DEF_RQTY = 833
+    DEF_INV1 = DEF_INV2 = DEF_INV3 = 833
+    DEF_INV_COST = 98250
+    DEF_RCOST1 = DEF_RCOST2 = DEF_RCOST3 = 32750
+    DEF_MIN_RESERVE = 32750
+
 # ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 monthly_price = st.sidebar.number_input("Sale Price ($)", 0, 500, 75)
 init_subs     = st.sidebar.number_input("Initial Monthly Subs", 0, 100000, 250)
@@ -100,15 +121,15 @@ cac_pre       = st.sidebar.number_input("Prepaid CAC ($)", 0, 500, 20)
 churn         = st.sidebar.number_input("Churn Rate", 0.0, 1.0, 0.05, format="%.2f")
 lead_time     = st.sidebar.number_input("Lead Time (months)", 0, 12, 1)
 safety        = st.sidebar.number_input("Safety Factor", 1.0, 3.0, 1.2, format="%.2f")
-rqty          = st.sidebar.number_input("Reorder Quantity (#)", 0, 25000, 833)
-rcost1        = st.sidebar.number_input("Reorder Cost Stage 1 ($)", 0, 1000000, 32750)
-rcost2        = st.sidebar.number_input("Reorder Cost Stage 2 ($)", 0, 1000000, 32750)
-rcost3        = st.sidebar.number_input("Reorder Cost Stage 3 ($)", 0, 1000000, 32750)
+rqty          = st.sidebar.number_input("Reorder Quantity (#)", 0, 25000, DEF_RQTY)
+rcost1        = st.sidebar.number_input("Reorder Cost Stage 1 ($)", 0, 1000000, DEF_RCOST1)
+rcost2        = st.sidebar.number_input("Reorder Cost Stage 2 ($)", 0, 1000000, DEF_RCOST2)
+rcost3        = st.sidebar.number_input("Reorder Cost Stage 3 ($)", 0, 1000000, DEF_RCOST3)
 ship_cost_pkg = st.sidebar.number_input("Shipping Cost per Pack ($)", 0.0, 50.0, 5.0, format="%.2f")
-inv1          = st.sidebar.number_input("Initial Inv Stage 1 (#)", 0, 25000, 833)
-inv2          = st.sidebar.number_input("Initial Inv Stage 2 (#)", 0, 25000, 833)
-inv3          = st.sidebar.number_input("Initial Inv Stage 3 (#)", 0, 25000, 833)
-inv_cost      = st.sidebar.number_input("Initial Inventory Cost ($)", 0, 500000, 98250)
+inv1          = st.sidebar.number_input("Initial Inv Stage 1 (#)", 0, 25000, DEF_INV1)
+inv2          = st.sidebar.number_input("Initial Inv Stage 2 (#)", 0, 25000, DEF_INV2)
+inv3          = st.sidebar.number_input("Initial Inv Stage 3 (#)", 0, 25000, DEF_INV3)
+inv_cost      = st.sidebar.number_input("Initial Inventory Cost ($)", 0, 500000, DEF_INV_COST)
 st1           = st.sidebar.number_input("Start Stage 1 %", 0.0, 1.0, 0.60, format="%.2f")
 st2           = st.sidebar.number_input("Start Stage 2 %", 0.0, 1.0, 0.30, format="%.2f")
 st3           = st.sidebar.number_input("Start Stage 3 %", 0.0, 1.0, 0.10, format="%.2f")
@@ -119,7 +140,7 @@ months        = st.sidebar.number_input("Simulation Months", 1, 36, 12)
 
 # Entity-level income tax (LLC: off unless you simulate PTE/C-corp)
 tax_rate      = st.sidebar.slider("Income Tax Rate (entity-level)", 0.0, 1.0, 0.21, step=0.01, format="%.2f")
-pay_taxes_now = st.sidebar.checkbox("Pay Income Taxes Monthly (else accrue)", value=True)
+pay_taxes_now = st.sidebar.checkbox("Pay Income Taxes Monthly (else accrue)", value=False)
 
 # Sales tax & distributions
 collect_sales_tax = st.sidebar.checkbox("Collect sales tax nationwide (simulated)", True)
@@ -133,10 +154,10 @@ taxable_sales_fraction = st.sidebar.number_input(
 
 # Cash sweep controls
 enable_cash_sweep     = st.sidebar.checkbox("Enable cash sweep (owner distributions)", value=True)
-min_cash_reserve      = st.sidebar.number_input("Minimum cash reserve ($)", 0, 10000000, 32750, step=250)  # default 32,750
+min_cash_reserve      = st.sidebar.number_input("Minimum cash reserve ($)", 0, 10000000, DEF_MIN_RESERVE, step=250)
 sweep_horizon_months  = st.sidebar.number_input("Cash sweep horizon (months)", 1, 12, 2)
 sweep_pct             = st.sidebar.slider("Distribute % of excess cash", 0.0, 1.0, 1.0, step=0.05)
-restricted_deferred_pct = st.sidebar.slider("Reserve % of deferred revenue for sweep", 0.0, 1.0, 0.50, step=0.05)
+restricted_deferred_pct = st.sidebar.slider("Reserve % of deferred revenue", 0.0, 1.0, 0.50, step=0.05)
 
 # Owner-level (personal) tax estimate for pass-through distributions view
 owner_eff_tax_rate = st.sidebar.slider(
@@ -181,6 +202,7 @@ params = {
     "sweep_horizon_months":   int(sweep_horizon_months),
     "sweep_pct":              float(sweep_pct),
     "restricted_deferred_pct":float(restricted_deferred_pct),
+    "supplier_model":         supplier_model,
 }
 
 # Unit cost sanity panel
@@ -622,7 +644,7 @@ st.dataframe(df3, hide_index=True, use_container_width=True, height=height_px)
 st.subheader("Annual Income Statement")
 st.dataframe(annual_is_df.style.format(fmt_flt))
 
-# ─── 12-Month Balance Sheet (RESTORED) ───────────────────────────────────────
+# ─── 12-Month Balance Sheet (Expander) ───────────────────────────────────────
 with st.expander("📊 Balance Sheet (Months 1–12)"):
     bs_order = [
         "Cash Balance",
@@ -731,6 +753,7 @@ with st.expander("📋 All Calculation Methods"):
 
 # ─── Quick Print & Download (includes Owner Take-Home + 12-mo BS) ────────────
 settings_map = {
+    "supplier_model":         "Fulfillment Model",
     "monthly_price":          "Sale Price ($)",
     "initial_subscribers":    "Initial Monthly Subs",
     "initial_prepaid":        "Initial Prepaid Subs",
@@ -800,8 +823,8 @@ monthly_html = f'<div class="monthly-wrap">{monthly_html_core}</div>'
 _annual_formatters = {c: _fmt_flt for c in annual_is_df.columns}
 annual_is_html = annual_is_df.to_html(index=True, border=0, formatters=_annual_formatters)
 
-# Owner Distributions (print) — match the five columns
-if not base_dist.empty:
+# Owner Distributions (print)
+if 'base_dist' in locals() and not base_dist.empty:
     owner_print_df = base_dist[[
         "Owner Distribution", "Est. Tax", "Take-Home",
         "Cumulative Distribution", "Cumulative Take-Home"
